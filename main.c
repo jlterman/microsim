@@ -1,7 +1,7 @@
 /*************************************************************************************
 
-    Copyright (c) 2003 by Jim Terman
-    This file is part of the 8051 Assembler
+    Copyright (c) 2003, 2004 by James L. Terman
+    This file is part of the Assembler
 
     This program is free software; you can redistribute it and/or modify
     it under the terms of the GNU General Public License as published by
@@ -33,9 +33,10 @@
 #include "cpu.h"
 #include "version.h"
 
-extern char cpu_version[];
+extern const char cpu_version[];
 
-const char asm_version[] = "Assembler " ASM_VERS "\nCopyright Jim Terman 2003";
+const char asm_version[] = "Assembler " ASM_VERS "\nBuild date: " BUILD_DATE 
+                         "\nCopyright (c) James L. Terman 2003, 2004\n";
 
 FILE *lst = NULL;            /* file descriptor for assembly listing */
 
@@ -185,10 +186,10 @@ int main(int argc, char *argv[])
   int silent = FALSE;
   int batch = FALSE;
   int verbose = FALSE;
-  int version = FALSE;
   char temp[] = "asmXXXXXX";
 
-  while ((c = getopt(argc, argv, "svhlLo:")) != EOF)
+  if (!argc) printHelp();
+  while ((c = getopt(argc, argv, "svhlVLo:")) != EOF)
     {
       switch (c)
 	{
@@ -202,7 +203,8 @@ int main(int argc, char *argv[])
 	  batch = TRUE;
 	  break;
 	case 'V':
-	  version = TRUE;
+	  puts(asm_version); puts(cpu_version);
+	  exit(0);
 	  break;
 	case 'v':
 	  verbose = TRUE;
@@ -245,7 +247,7 @@ int main(int argc, char *argv[])
 	}
 #endif
       
-      if (version) 
+      if (verbose) 
 	printf("%s\n%s\nThis program is distributed under the GNU Public License.\n\n", cpu_version, asm_version);
       if (verbose && !strcmp(filename, "-"))  printf("Starting assembly from standard input\n");
       if (verbose) printf("Starting assembly of file %s\n", filename);

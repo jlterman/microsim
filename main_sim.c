@@ -1,7 +1,7 @@
 /*************************************************************************************
 
     Copyright (c) 2003, 2004 by James L. Terman
-    This file is part of the 8051 Simulator
+    This file is part of the Simulator
 
     This program is free software; you can redistribute it and/or modify
     it under the terms of the GNU General Public License as published by
@@ -38,6 +38,14 @@
 #include "err.h"
 #include "sim.h"
 #include "version.h"
+
+extern const char cpu_version[];
+
+extern const char asm_version[];
+
+const char sim_version[] = "Assembler " ASM_VERS ", Simulator " SIM_VERS
+                         "\nBuild date: " BUILD_DATE 
+                         "\nCopyright (c) James L. Terman 2003, 2004\n";
 
 enum cmd_err
   { 
@@ -566,19 +574,36 @@ static FILE *safeOpen(char* filename, char* mode)
 
 static void printHelp(void)
 {
-  printf("sim file.asm");
+  printf("sim file.asm\n");
+  printf("sim -h -- print this message\n");
+  printf("sim -V -- print simulator version and build date\n");
   exit(1);
 }
 
 int main(int argc, char *argv[])
 {
   char temp[] = "simXXXXXX";
-  int errNo, i, l, nextLine, numErr = 0;
+  int c, errNo, i, l, nextLine, numErr = 0;
   unsigned int m;
 
   if (!argc) printHelp();
-  bufd = safeOpen(filename = argv[1], "r");
-  
+  while ((c = getopt(argc, argv, "Vh")) != EOF)
+    {
+      switch (c)
+	{
+	case 'V':
+	  puts(sim_version); puts(cpu_version);
+	  exit(0);
+	  break;
+	case 'h':
+	default:
+	  printHelp();
+	  break;
+	}
+    }
+  if (optind + 1 >= argc) printHelp();
+
+  bufd = safeOpen(filename = argv[optind], "r");
   while (fgets(buf_store, BUFFER_SIZE, bufd))
     {
       if (num_Lines >= size_Lines) 
