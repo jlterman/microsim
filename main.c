@@ -126,7 +126,7 @@ int main(int argc, char *argv[])
   char *filename = argv[1];
   int numErr = 0;
   int batch = FALSE;
-  char temp[BUF_SIZE] = "/home/tmp/asm51XXXXXX";
+  char temp[BUF_SIZE] = "asm51XXXXXX";
 
   while ((c = getopt(argc-1, argv+1, "hlLo:")) != EOF)
     {

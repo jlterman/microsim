@@ -21,7 +21,6 @@
 #include <stdio.h>
 #include <ctype.h>
 #include <string.h>
-#include <libio.h>
 #include <limits.h>
 #include <memory.h>
 #include <stdlib.h>
