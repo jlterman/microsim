@@ -49,15 +49,6 @@ const str_storage backErrMsg[] =
     "Relative jmp out of range"
   };
 
-/* array of psuedo_ops that can be processed as instructions
- */
-static const int psuedo_instr[][INSTR_TKN_BUF] = 
-  {
-    { 256, 1, 0, db,    data,     0 },
-    { 257, 2, 0, dw,    addr_16,  0 },
-    { UNDEF, 0 } 
-  };
-
 void writeList(int oldPC, int line, char* buffer)
 {
   int p;
@@ -66,7 +57,7 @@ void writeList(int oldPC, int line, char* buffer)
       fprintf(lst, "%5d %04X: ", line, oldPC);
       for (p=0; p<3; ++p) 
 	{
-	  if (p<cpu_instr_tkn[memory[oldPC]][INSTR_TKN_BYTES]) 
+	  if (p < (pc - oldPC))
 	    {
 	      fprintf(lst, "%02X ", memory[oldPC+p]);
 	    }
@@ -116,15 +107,10 @@ const int *findInstr(const int *tkn)
 
   if (!isInstr(tkn[0])) longjmp(err, bad_instr);
 
-  if (isInstr(tkn[0])>0)
-    {
-      ret = matchTokens(cpu_instr_tkn, tkn);
-    }
+  if ( (ret = matchTokens(cpu_instr_tkn, tkn)) )
+    return ret;
   else
-    {
-      ret = matchTokens(psuedo_instr, tkn);
-    }
-  if (ret) return ret; else longjmp(err, no_instr);
+    longjmp(err, no_instr);
 }
 
 void loadMemory(const int *theInstr, int *tkn)
@@ -133,15 +119,15 @@ void loadMemory(const int *theInstr, int *tkn)
 
   if (handleInstr(theInstr, tkn)) return;
 
-  if (theInstr[0]<0x100) memory[pc++] = theInstr[0];
+  if (theInstr[INSTR_TKN_OP]<256) memory[pc++] = theInstr[INSTR_TKN_OP];
   for (t=INSTR_TKN_INSTR+1; theInstr[t]; ++t)
     {
       switch (theInstr[t])
 	{
-	case data:
+	case data_8:
 	  tkn_pos += 2;
 	  if (tkn[tkn_pos]>BYTE_MAX || 
-	      tkn[tkn_pos+2]<SGN_BYTE_MIN) longjmp(err, const_range);
+	      tkn[tkn_pos]<SGN_BYTE_MIN) longjmp(err, const_range);
 	  memory[pc++] = getLow(tkn[tkn_pos]);
 	  break;
 	case addr_8:
@@ -149,6 +135,9 @@ void loadMemory(const int *theInstr, int *tkn)
 	  if (tkn[tkn_pos]>BYTE_MAX || tkn[tkn_pos+2]<0) longjmp(err, addr8_range);
 	  memory[pc++] = tkn[tkn_pos];
 	  break;
+	case data_16:
+	  if (tkn[tkn_pos+2]>((1<<16) - 1) || 
+	      tkn[tkn_pos+2]<-(1<<15)) longjmp(err, const_range);
 	case addr_16:
 	  tkn_pos += 2;
 

@@ -21,14 +21,23 @@
 #ifndef _FRONTEND
 #define _FRONTEND
 
+/* emum directv are tokens for assmembler psuedo directives 
+ * handled by the front end. Note comma is defined here for db & dw.
+ */
+#define DIRCTV_BASE 1024
+
+enum dirctv
+  {
+    db = DIRCTV_BASE, dw, equ, org
+  };
 
 /* enum const_tokens are tokens that represent different types of 
  * constants that the opcodes takes as parameters
  */
 enum const_tokens 
   {
-    const_tok = 512, data, addr_8, addr_16, rel_addr,
-    number, expr, label, addr_label
+    comma = 511, const_tok, data_8, data_16, addr_8, addr_16, rel_addr,
+    number, character, expr, label, addr_label
   };
 
 /* Undefined label value using guarenteed illegal value

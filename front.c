@@ -49,7 +49,7 @@
 enum errNo 
   {
     no_char = FRONTERR+1, undef_label, labval_undef, bad_number, bad_expr, miss_expr, zero_div, 
-    no_op, undef_org, noexpr_org, miss_colon, bad_equ
+    no_op, undef_org, noexpr_org, miss_colon, bad_equ, bad_db, bad_char
   };
 
 const str_storage frontErrMsg[] = 
@@ -65,7 +65,9 @@ const str_storage frontErrMsg[] =
     "Non-constant label for org directive",
     "Can't use expression for org directive",
     "Missing colon at end of address label or unrecognized instruction",
-    "Bad equ directive statement"
+    "Bad equ directive statement",
+    "Bad db/dw directive statement",
+    "Bad character constant"
   };
 
 /* All labels have to start with an alpha char; Afterwards may have any 
@@ -141,6 +143,28 @@ static const int isExpr_table[ASCII_MAX] =
     1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 0, 0, 0, 0  /* pqrstuvwxyz{|}~  */
  };
 
+#define slashChar(x) slashChar_table[(int) x]
+
+static const char slashChar_table[ASCII_MAX] =
+  {
+    0, 0, 0, 0, 0, 0, 0, 0, 
+    0, 0, 0, 0, 0, 0, 0, 0,
+    0, 0, 0, 0, 0, 0, 0, 0, 
+    0, 0, 0, 0, 0, 0, 0, 0,
+    0, 0, 0, 0, 0, 0, 0, '\'',
+    0, 0, 0, 0, 0, 0, 0, 0,
+    0, 0, 0, 0, 0, 0, 0, 0,
+    0, 0, 0, 0, 0, 0, 0, '\?', 
+    0, 0, 0, 0, 0, 0, 0, 0,
+    0, 0, 0, 0, 0, 0, 0, 0,
+    0, 0, 0, 0, 0, 0, 0, 0,
+    0, 0, 0, 0, 0, 0, 0, 0,
+    0, '\a', '\b', 0, 0, '\f', 0,
+    0, 0, 0, 0, 0, 0, 0, 0,
+    0, 0, '\r', 0, '\t', 0, '\v', 0,
+    0, 0, 0, 0, 0, 0, 0, 0,
+  };
+
 /* Macros that return legal tokens from defn's
  * processor specific header file
  */
@@ -148,18 +172,11 @@ static const int isExpr_table[ASCII_MAX] =
 
 #define isToken(x) (isToken_table[(int) x] + isOp(x))
 
-#define ASM_DIRCTV_LEN  2
+#define ASM_DIRCTV_LEN  5
 
 const char *asm_dirctv[ASM_DIRCTV_LEN] = 
   {
-    "equ", "org"
-  };
-
-#define DIRCTV_BASE 1024
-
-enum dirctv
-  {
-    equ = DIRCTV_BASE, org
+    "db", "dw", "equ", "org"
   };
 
 extern char *buffer;        /* line to be assembled */
@@ -248,6 +265,23 @@ static int nextToken(char *token)
   /* return NULL if only comment or whitespace found */
 
   if (!buffer[start] || buffer[start]==';') return 0;
+
+   if (buffer[start]==',') 
+     { 
+       pos = start+1; return comma;
+     }
+   if (buffer[start]=='\'')
+     {
+       index = 0;
+       token[index++] = buffer[start++];
+       if ( (token[index++] = buffer[start++]) == '\\')
+	 token[index++] = buffer[start++];
+       if (buffer[start] != '\'') longjmp(err, bad_char);
+       token[index++] = buffer[start++];
+       token[index] = '\0';
+       pos = start;
+       return character;
+     }
 
   /* If char is not token or not part of one, return error */
 
@@ -523,6 +557,29 @@ static int getExpr(char *expr)
   return value;
 }
 
+static void newdbtkn(int *dbtkn, int *tkn, int instr_token, int data_token)
+{
+  int dt = 0, t = 0;
+
+  dbtkn[dt++] = instr_token;
+  dbtkn[dt++] = 0;
+  dbtkn[dt++] = 0;
+  dbtkn[dt++] = 0;
+  if (tkn[++t] != number) longjmp(err, bad_db);
+  ++t;
+  dbtkn[dt++] = data_token;
+  
+  while (tkn[++t])
+    {
+      if (tkn[t++] != comma) longjmp(err, bad_db);
+      dbtkn[dt++] = comma;
+      
+      if (tkn[t++] != number) longjmp(err, bad_db);
+      dbtkn[dt++] = data_token;
+    }
+  dbtkn[dt] = 0;
+}
+
 void firstPass(void)
 {
   char token[BUF_SIZE];
@@ -538,6 +595,7 @@ void firstPass(void)
 	case number:
 	  tkn[++tkn_pos] = getNumber(token); 
 	  break;
+	case character:
 	case expr:
 	  tkn[++tkn_pos] = UNDEF; 
 	  break;
@@ -589,9 +647,15 @@ void firstPass(void)
       else if (tkn[3] != expr) /* only  number, label or expr after equ */
 	longjmp(err, bad_expr);
       break;
+    case db:
+      pc+= tkn_pos/2;
+      break;
+    case dw:
+      pc+= tkn_pos;
+      break;
     default:
       theInstr = findInstr(tkn);
-      pc += theInstr[1];
+      pc += theInstr[INSTR_TKN_BYTES];
       break;
     }
 }
@@ -602,6 +666,7 @@ void secondPass(void)
   int t;
   int tkn_pos = 0;
   int tkn[TKN_BUF] = { 0 };       /* tokenized buffer */
+  int dbtkn[TKN_BUF] = { 0 };
 
   while (tkn_pos<TKN_BUF-1 && (tkn[tkn_pos] = nextToken(token)) )
     {
@@ -609,6 +674,17 @@ void secondPass(void)
 	{
 	case number:
 	  tkn[++tkn_pos] = getNumber(token); 
+	  break;
+	case character:
+	  tkn[tkn_pos++] = number;
+	  if (token[1] == '\\')
+	    {
+	      if ( (tkn[tkn_pos] = slashChar(token[2])) == 0) longjmp(err, bad_char);
+	    }
+	  else
+	    {
+	      tkn[tkn_pos] = token[1];
+	    }
 	  break;
 	case expr:
 	  tkn[tkn_pos] = number;
@@ -655,6 +731,14 @@ void secondPass(void)
 	    {
 	      longjmp(err, bad_equ);
 	    }
+	  break;
+	case db:
+	  newdbtkn(dbtkn, tkn, db, data_8);
+	  loadMemory(dbtkn, tkn);
+	  break;
+	case dw:
+	  newdbtkn(dbtkn, tkn, dw, data_16);
+	  loadMemory(dbtkn, tkn);
 	  break;
 	default:
 	  loadMemory(findInstr(tkn), tkn);

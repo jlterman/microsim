@@ -113,5 +113,5 @@ extern int size_buf_labels;    /* size of label buffer */
 
 #endif
 
-#define getLow(x) ((x) & 0xFF)
-#define getHigh(x) (((x)/0x100) & 0xFF)
+#define getLow(x) (((unsigned) x) & 0xFF)
+#define getHigh(x) ((((unsigned) x)/0x100) & 0xFF)
