@@ -30,6 +30,8 @@
 #ifndef _ASM_HEADER
 #define _ASM_HEADER
 
+#include <setjmp.h>
+
 /******************************************************************************
  *
  *    The following function are call back functions to be defined by the
@@ -101,6 +103,27 @@ extern
 #endif
 void secondPass(str_storage);
 
+/* set jmp_buf variable for expr.c errors and save old value
+ */
+#ifndef EXPR_LOCAL
+extern
+#endif
+void setJmpBuf(jmp_buf*);
+
+/* restore set jmp_buf variable for expr.c errors and save old value
+ */
+#ifndef EXPR_LOCAL
+extern
+#endif
+void restoreJmpBuf(void);
+
+/* will search for end of paranthetical expression given to it
+ */
+#ifndef EXPR_LOCAL
+extern
+#endif
+int findClosePar(str_storage, int);
+
 /* will return value of expression passed to it consisting of operators, 
  * numerical constants and label values
  */
@@ -122,6 +145,13 @@ int getNumber(str_storage);
 extern
 #endif
 void printLabels(FILE*);
+
+/* get value of label name passed as parameter
+ */
+#ifndef EXPR_LOCAL
+extern
+#endif
+label_type *getLabel(str_storage);
 
 /* get value of label name passed as parameter
  */

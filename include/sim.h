@@ -24,7 +24,7 @@
 
 enum sim_err 
   {
-    bad_pc = LAST_EXPR_ERR, LAST_SIM_ERR
+    bad_pc = LAST_EXPR_ERR, bad_addr, LAST_SIM_ERR
   };
 
 #ifndef SIM_LOCAL
@@ -40,19 +40,26 @@ extern
 #endif
 int *getMemExpr(char*);
 
+/* set a temporary break for next command
+ */
+#ifndef SIM_LOCAL
+extern
+#endif
+void setNextBrk(int);
+
 /* add break at a line of assembly
  */
 #ifndef SIM_LOCAL
 extern
 #endif
-void addBrk(int tmpFlag, int line);
+int addBrk(int, int, char*);
 
 /* Delete break number brk
  */
 #ifndef SIM_LOCAL
 extern
 #endif
-void delBrk(int brk);
+void delBrk(int);
 
 /* stepone will execute one instruction
  */

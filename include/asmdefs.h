@@ -25,6 +25,8 @@
 #ifndef _ASM_DEFS
 #define _ASM_DEFS
 
+#include <assert.h>
+
 /* label type definition
  */
 typedef struct 
@@ -42,6 +44,7 @@ typedef const char* str_storage;
 #define TRUE 1
 #define FALSE 0
 
+#define CONST_MASK 0xFFFF
 #define MEMORY_MAX 65536
 #define BUFFER_SIZE 256
 #define CHUNK_SIZE 1024
@@ -83,6 +86,7 @@ typedef const char* str_storage;
 #define isExpr(x) isExpr_table[(int) x]
 
 #ifndef EXPR_LOCAL
+extern label_type *labels;
 extern const int isLabel_table[];
 extern const int isExpr_table[];
 extern const int isOp_table[];
@@ -91,21 +95,19 @@ extern const int isOp_table[];
 /* Generally usefull macros
  */
 #define safeMalloc(var, type, size) \
-  {  if (!var) free(var); \
-     var = (type*) malloc((size)*sizeof(type)); \
-     if (!var) { fprintf(stderr, "Out of memory!\n"); exit(1); } }
+  {  free(var); var = (type*) malloc((size)*sizeof(type)); assert(var); }
 
 #define safeCalloc(var, type, size) \
-  {  if (!var) free(var); \
-     var = (type*) calloc(sizeof(type), size); \
-     if (!var) { fprintf(stderr, "Out of memory!\n"); exit(1); } }
+  {  free(var); var = (type*) calloc(sizeof(type), size); assert(var); }
 
 #define safeRealloc(var, type, size) \
-  {  var = (type*) realloc(var, (size)*sizeof(type)); \
-     if (!var) { fprintf(stderr, "Out of memory!\n"); exit(1); } }
+  {  var = (type*) realloc(var, (size)*sizeof(type)); assert(var); }
 
 #define safeDupStr(new, str) \
   {  safeMalloc(new, char, strlen(str)+1); strcpy(new, str); }
+
+#define safeAddArray(type, a, a_num, a_size) \
+  { if ((a_num) >= (a_size)) safeRealloc(a, type, a_size += CHUNK_SIZE); }
 
 #define getLow(x) (((unsigned) x) & 0xFF)
 #define getHigh(x) ((((unsigned) x)/0x100) & 0xFF)

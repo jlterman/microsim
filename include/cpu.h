@@ -74,12 +74,17 @@ void reset(void);
 #ifndef SIM_CPU_LOCAL
 extern 
 #endif
+int irq(int);
+
+#ifndef SIM_CPU_LOCAL
+extern 
+#endif
 void step(void);
 
 #ifndef SIM_CPU_LOCAL
 extern 
 #endif
-int *getRegister(str_storage, int*);
+int *getRegister(str_storage, int*, int*);
 
 #ifndef SIM_CPU_LOCAL
 extern 
@@ -110,19 +115,14 @@ extern const int isToken_table[];         /* legal char tokens        */
 extern const str_storage tokens[];        /* list of legal tokens     */
 extern const int tokens_length;           /* no. of legal tokens      */
 extern const int isRegister_table[];      /* table of register tokens */
+
+extern char cpu_version[];            /* expected by main.c and sim.c */
+extern const label_type def_labels[]; /* expected by expr.c           */
 #endif
-
-/* The following global variables must also be defined:
-
-char cpu_version[];          - expected by main.c and sim.c
-const label_type def_labels; - expected by front.c
-
-*/
 
 #define relJmp(pc, rel) (pc += (rel) - (((rel)>SGN_BYTE_MAX) ? BYTE_MAX : 0))
 #define inc(x) (((x)==(BYTE_MAX-1)) ? (x) = 0 : ++(x))
 #define dec(x) ((x) = (!(x)) ? BYTE_MAX-1 : (x) - 1)
 #define setBit(x, addr, bit) (*(addr) = (x) ? *(addr) | bit : *(addr) & (BYTE_MASK - (bit)))
-#define isRegToken(x) isRegister_table[(int) x]
 
 #endif
