@@ -22,22 +22,31 @@
 #include <stdlib.h>
 #include <getopt.h>
 #include <string.h>
-#include "version.h"
-#include "asm.h"
 
 #ifdef __WIN32__
 #include <io.h>
 #endif
 
+#define MAIN_LOCAL
+#include "asmdefs.h"
+#include "asm.h"
+#include "cpu.h"
+#include "version.h"
+
 extern char cpu_version[];
 
 const char asm_version[] = "Assembler " ASM_VERS "\nCopyright Jim Terman 2003";
 
-static FILE *bufd;                  /* file descripter of file being read for buffer */
-static char buf_store[BUF_SIZE];
+FILE *lst = NULL;            /* file descriptor for assembly listing */
 
-char *buffer = buf_store;           /* line to be assembled */
+static char *filename;       /* name of file being assembled            */
+static FILE *bufd;           /* file descripter of file being assembled */
+static char *buffer = NULL;  /* line being assembled */
+static FILE *obj = NULL;     /* file descriptor of object file */
 
+/* this routine called to write size bytes at memory addr to a file. 
+ * This writes out memory in the Intel Hex Format
+ */
 
 static void writeMemory(int addr, int size)
 {
@@ -53,6 +62,9 @@ static void writeMemory(int addr, int size)
   fprintf(obj, "%02X\n", getLow(0 - getLow(checksum)));
 }
 
+/* Global function called by assembly back end to write memory to a file
+ * between curPC and newPC. writeMemory() will be called with a max of 16 bytes
+ */
 #define BYTES_PER_LINE 16
 
 void writeObj(int curPC, int newPC)
@@ -62,17 +74,44 @@ void writeObj(int curPC, int newPC)
   int bytes;
   static int lastPC = 0;
 
+  if (!obj) return;
   if (curPC>lastPC)
     {
       lines = (curPC - lastPC)/BYTES_PER_LINE;
-      for (i = 0; i<lines; ++i) writeMemory(lastPC+i*BYTES_PER_LINE, BYTES_PER_LINE);
+      for (i = 0; i<lines; ++i) writeMemory(lastPC + i*BYTES_PER_LINE, BYTES_PER_LINE);
       bytes = (curPC - lastPC) % BYTES_PER_LINE;
-      if (bytes) writeMemory(lastPC+lines*BYTES_PER_LINE, bytes);
+      if (bytes) writeMemory(lastPC + lines*BYTES_PER_LINE, bytes);
     }
   lastPC = newPC;
   if (newPC == MEMORY_MAX) fprintf(obj, ":00000001FF\n");
 }
 
+/* print error message to file fd. Error format should be recognized.
+ */
+static void fprintErr(FILE *fd, int errNo, int line, str_storage msg)
+{
+  fprintf(fd, "%s:%d ****** Syntax error #%d: %s\n", filename, line, errNo, msg);
+  if (buffer) fprintf(fd, "%s\n", buffer);
+}
+
+/* global function called by assembler when error is reported
+ */
+void printErr(int errNo, int line, str_storage msg)
+{
+  fprintErr(stderr, errNo, line, msg);
+  if (lst && lst!=stdout) fprintErr(lst, errNo, line, msg);
+}
+
+/* global function called by assembler for memory reference
+ * return NULL as this is not allowed in assembler
+ */
+int *getMemExpr(char *expr)
+{
+  return NULL;
+}
+
+/* return with a pointer to a file or exit program
+ */
 static FILE *safeOpen(char* filename, char* mode)
 {
   FILE *fd;
@@ -87,24 +126,34 @@ static FILE *safeOpen(char* filename, char* mode)
   return fd;
 }
 
-int getBuffer(void)
+/* global function called by assembly front end whenever it needs a new line
+ * This getBuffer reads new line from file but will not return more than 256
+ * bytes of line
+ */
+str_storage getBuffer(void)
 {
-  static int complete = TRUE;
-  int i;
+  static char buf[BUFFER_SIZE];
+  int nextLine, c;
 
-  while (!complete)
+  if (feof(bufd)) return NULL;
+  if (!fgets (buf, BUFFER_SIZE, bufd)) return NULL;
+  nextLine = (lastChar(buf) == '\n');
+  safeDupStr(buffer, buf);
+  while (!nextLine && !feof(bufd) && fgets (buf, BUFFER_SIZE, bufd))
     {
-      fgets (buffer, BUF_SIZE, bufd); /* if complete line was not read */
-      if (feof(bufd)) return FALSE;   /* finish reading line or file */
+      safeRealloc(buffer, char, strlen(buffer) + strlen(buf) + 1);
+      strcat(buffer, buf);
+      nextLine = (lastChar(buffer) == '\n');
     }
-  fgets (buffer, BUF_SIZE, bufd); if (feof(bufd)) return FALSE;
-  complete = (buffer[strlen(buffer) - 1] == '\n');
 
-  i = strlen(buffer);
-  while (i-- && buffer[i]<' ') buffer[i] = '\0';
-  return TRUE;
+  c = strlen(buffer);
+  while (c && buffer[--c] < '!') buffer[c] = '\0';
+  return buffer;
 }
 
+/* will replace the suffix ".xxx" in string oldname with the 
+ * new suffix in newsuffix
+ */
 static char *newSuffix(char *oldname, char *newsuffix)
 {
   char* newstr;
@@ -112,9 +161,9 @@ static char *newSuffix(char *oldname, char *newsuffix)
   int c = strrchr(oldname, '.') - oldname;
   if (!c) c = strlen(oldname);
 
-  safeMalloc(newstr, char, c+2+strlen(newsuffix));
-  strncpy(newstr, oldname, c+1); newstr[c+1] = '\0';
-  strcpy(newstr+c+1, newsuffix);
+  safeMalloc(newstr, char, c + 2 + strlen(newsuffix));
+  strncpy(newstr, oldname, c + 1); newstr[c + 1] = '\0';
+  strcpy(newstr + c +1, newsuffix);
   newstr[c] = '.';
   return newstr;
 }
@@ -129,20 +178,22 @@ static void printHelp(void)
 int main(int argc, char *argv[])
 {
   int c;
+  int lstFlag = FALSE;
   char *lstFile = NULL;
   char *objFile = NULL;
   int numErr = 0;
+  int silent = FALSE;
   int batch = FALSE;
   int verbose = FALSE;
   int version = FALSE;
-  char temp[BUF_SIZE] = "asm51XXXXXX";
+  char temp[] = "asmXXXXXX";
 
   while ((c = getopt(argc, argv, "svhlLo:")) != EOF)
     {
       switch (c)
 	{
 	case 'l':
-	  lstFile = newSuffix(filename, "lst");
+	  lstFlag = TRUE;
 	  break;
 	case 'o':
 	  objFile = optarg;
@@ -170,6 +221,7 @@ int main(int argc, char *argv[])
   for (c = optind; c<argc; ++c)
     {
       filename = argv[c];
+      if (lstFlag) lstFile = newSuffix(filename, "lst");
       bufd = safeOpen(filename, "r");
       if (batch)
 	{
@@ -187,7 +239,7 @@ int main(int argc, char *argv[])
       mktemp(temp);
       obj = safeOpen(temp, "w");
 #else
-      if ( (obj = fdopen(mkstemp(temp), "w") ) == NULL)
+      if ( (obj = fdopen(mkstemp(temp), "w") ) == NULL) /* mkstemp safer for unix systems */
 	{ 
 	  fprintf(stderr, "Can't open tmp file!\n"); exit(1); 
 	}

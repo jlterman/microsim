@@ -1,6 +1,6 @@
 /*************************************************************************************
 
-    Copyright (c) 2003 by Jim Terman
+    Copyright (c) 2003, 2004 by James L. Terman
     This file is part of the 8051 Assembler
 
     This program is free software; you can redistribute it and/or modify
@@ -21,20 +21,30 @@
 
 #include <stdio.h>
 #include <stdlib.h>
+#include <string.h>
 #include <setjmp.h>
 
-#define ERR_LOCAL
-#include "asm.h"
+#define PROC_LOCAL
+
+#include "asmdefs.h"
 #include "err.h"
+#include "front.h"
+#include "cpu.h"
+#include "proc.h"
 
-void printErr(FILE *fd, const char *filename, int errNo, int line)
+/* this file is for functions whose behavior can change 
+ * dependent on the processor
+ */
+
+/* Store a 16 bit word depedent on the endian of the processor
+ */
+void storeWord(int *addr, int value)
 {
-  const char *msg;
-
-  if (errNo<BACKERR) msg = frontErrMsg[errNo- FRONTERR - 1];
-  else if (errNo<CPUERR) msg = backErrMsg[errNo - BACKERR -1];
-  else msg = procErrMsg[errNo - CPUERR -1];
-
-  fprintf(fd, "%s:%d ****** Syntax error #%d: %s\n", filename, line, errNo, msg);
-  fprintf(fd, "%s\n", buffer);
+#if ENDIAN == BIG
+  *addr = getHigh(value); ++addr;
+  *addr =  getLow(value);
+#else
+  *addr =  getLow(value); ++addr;
+  *addr = getHigh(value);
+#endif
 }

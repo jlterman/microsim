@@ -1,19 +1,24 @@
 CFLAGS=-Wall -pedantic -c -I ./ -I ./include
-OBJS=main.o front.o err.o
+export ASM_OBJS=expr.o front.o back.o
+export SIM_OBJS=sim_run.o
+export OBJS=main.o main_sim.o $(ASM_OBJS) $(SIM_OBJS)
 
 version.h: asm_vers *.c
 	echo \#define ASM_VERS \"version `cat asm_vers`, build date\: `date "+%B %d, %Y %k:%M:%S"`\">version.h; \rm -f main.o
 
-back51:
-	cd intel8051; make all
+mc51:
+	cd intel8051; $(MAKE) all 
 
-asm51: 	back51 version.h $(OBJS) intel8051/back.o intel8051/asm.o
-	$(CC) $(OBJS) intel8051/back.o intel8051/asm.o -o $@
+mc51_clean:
+	cd intel8051; $(MAKE) clean
 
-test:	asm51
-	cd intel8051; make test
+mot6502:
+	cd m6502; $(MAKE) all
 
-all:	test
+mot6502_clean:
+	cd m6502; $(MAKE) clean
 
-clean:
-	\rm -f version.h *.o asm51 ; cd ./intel8051 ; make clean 
+all:	version.h $(OBJS) mc51 mot6502
+
+clean:  mc51_clean mot6502_clean
+	\rm -f version.h *.o
