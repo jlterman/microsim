@@ -59,3 +59,8 @@ enum instr_tokens
 extern 
 #endif
 int handleInstr(const int*, int*);
+
+#ifndef CPU_LOCAL
+extern 
+#endif
+int handleTkn(const int, int*, int*);

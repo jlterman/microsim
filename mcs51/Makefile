@@ -9,11 +9,15 @@ back.o:	../back.c proc.h
 
 all:	version.h $(OBJS)
 
-test.obj:	../asm51 test.asm
-	../asm51 test.asm -v
+reset_test:
+	\rm -f *.obj *.out
 
-test:	test.obj
-	@{ if diff test.obj testref.obj ; then echo asm51 succeeded; else echo asm51 failed ; fi } > test.out ; cat test.out
+%.obj: %.asm ;	../asm51 $<
+
+%.out: %.obj;	@{ if diff $< $(<).ref ; then echo asm51 succeeded; else echo asm51 failed ; fi } > $@ ; cat $@
+
+test:	reset_test testrom.out testreg.out testall.out
+	@if grep -s fail *.out ; then echo test failed!!! ; else echo test okay ; fi ; \rm -f *.obj
 
 clean:
-	\rm -f *.o *.out version.h
+	\rm -f *.o *.obj *.out version.h

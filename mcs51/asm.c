@@ -70,7 +70,7 @@ const int isToken_table[ASCII_MAX] =
     0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
     0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
     0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, /*  !"#$%&'()*+,-./ */
-    1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 0, 0, 0, 0, 0, /* 0123456789:;<=>? */
+    1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 0, 0, 0, 0, 0, 0, /* 0123456789:;<=>? */
     1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, /* @ABCDEFGHIJKLMNO */
     1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 0, 0, 0, 1, /* PQRSTUVWXYZ[\]^_ */
     0, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, /* `abcdefghijklmno */
@@ -115,7 +115,7 @@ const int cpu_instr_tkn[][INSTR_TKN_BUF] =
   { 0x0D, 1, 1, inc,   r5,       0 },
   { 0x0E, 1, 1, inc,   r6,       0 },
   { 0x0F, 1, 1, inc,   r7,       0 },
-  { 0x10, 3, 2, jbc,   bit_addr, comma,    rel_addr, 0 },
+  { 0x10, 3, 2, jbc,   bit_byte, dot,      bit_no,   comma,    rel_addr, 0 },
   { 0x11, 2, 2, acall, addr_11,  0 },
   { 0x12, 3, 2, lcall, addr_16,  0 },
   { 0x13, 1, 1, rrc,   a,        0 },
@@ -131,7 +131,7 @@ const int cpu_instr_tkn[][INSTR_TKN_BUF] =
   { 0x1D, 1, 1, dec,   r5,       0 },
   { 0x1E, 1, 1, dec,   r6,       0 },
   { 0x1F, 1, 1, dec,   r7,       0 },
-  { 0x20, 3, 2, jb,    bit_addr, comma,    rel_addr, 0 },
+  { 0x20, 3, 2, jb,    bit_byte, dot,      bit_no,   comma,    rel_addr, 0 },
   { 0x21, 2, 2, aj_dup,addr_11,  0 },
   { 0x22, 1, 2, ret,   0 },
   { 0x23, 1, 1, rl,    a,        0 },
@@ -147,7 +147,7 @@ const int cpu_instr_tkn[][INSTR_TKN_BUF] =
   { 0x2D, 1, 1, add,   a,        comma,    r5,       0 },
   { 0x2E, 1, 1, add,   a,        comma,    r6,       0 },
   { 0x2F, 1, 1, add,   a,        comma,    r7,       0 },
-  { 0x30, 3, 2, jnb,   bit_addr, comma,    rel_addr, 0 },
+  { 0x30, 3, 2, jnb,   bit_byte, dot,      bit_no,   comma,    rel_addr, 0 },
   { 0x31, 2, 2, ac_dup,addr_11,  0 },
   { 0x32, 1, 2, reti,  0 },
   { 0x33, 1, 1, rlc,   a,        0 },
@@ -213,7 +213,7 @@ const int cpu_instr_tkn[][INSTR_TKN_BUF] =
   { 0x6F, 1, 1, xrl,   a,        comma,    r7,       0 },
   { 0x70, 2, 2, jnz,   rel_addr, 0 },
   { 0x71, 2, 2, ac_dup,addr_11,  0 },
-  { 0x72, 2, 2, orl,   c,        comma,    bit_addr, 0 },
+  { 0x72, 2, 2, orl,   c,        comma,    bit_byte, dot,      bit_no,   0 },
   { 0x73, 1, 2, jmp,   a_dptr,   0 },
   { 0x74, 2, 1, mov,   a,        comma,    pound,    data_8,   0 },
   { 0x75, 3, 2, mov,   addr_8,   comma,    pound,    data_8,   0 },
@@ -229,7 +229,7 @@ const int cpu_instr_tkn[][INSTR_TKN_BUF] =
   { 0x7F, 2, 1, mov,   r7,       comma,    pound,    data_8,   0 },
   { 0x80, 2, 2, sjmp,  rel_addr, 0 },
   { 0x81, 2, 2, aj_dup,addr_11,  0 },
-  { 0x82, 2, 2, anl,   c,        comma,    bit_addr, 0 },
+  { 0x82, 2, 2, anl,   c,        comma,    bit_byte, dot,      bit_no,   0 },
   { 0x83, 1, 2, movc,  a,        comma,    a_pc,     0 },
   { 0x84, 1, 4, divab, ab,       0 },
   { 0x85, 3, 2, mov,   addr_8,   comma,    addr_8,   0 },
@@ -245,7 +245,7 @@ const int cpu_instr_tkn[][INSTR_TKN_BUF] =
   { 0x8F, 2, 2, mov,   addr_8,   comma,    r7,       0 },
   { 0x90, 3, 2, mov,   dptr,     comma,    pound,    addr_16, 0 },
   { 0x91, 2, 2, ac_dup,addr_11,  0 },
-  { 0x92, 2, 2, mov,   bit_addr, comma,    c,        0 },
+  { 0x92, 2, 2, mov,   bit_byte, dot,      bit_no,   comma,    c,        0 },
   { 0x93, 1, 2, movc,  a,        comma,    a_dptr,   0 },
   { 0x94, 2, 1, subb,  a,        comma,    pound,    data_8,   0 },
   { 0x95, 2, 1, subb,  a,        comma,    addr_8,   0 },
@@ -259,9 +259,9 @@ const int cpu_instr_tkn[][INSTR_TKN_BUF] =
   { 0x9D, 1, 1, subb,  a,        comma,    r5,       0 },
   { 0x9E, 1, 1, subb,  a,        comma,    r6,       0 },
   { 0x9F, 1, 1, subb,  a,        comma,    r7,       0 },
-  { 0xA0, 2, 2, orl,   c,        comma,    slash,    bit_addr,  0 },
+  { 0xA0, 2, 2, orl,   c,        comma,    slash,    bit_byte, dot,      bit_no,   0 },
   { 0xA1, 2, 2, aj_dup,addr_11,  0 },
-  { 0xA2, 2, 1, mov,   c,        comma,    bit_addr, 0 },
+  { 0xA2, 2, 1, mov,   c,        comma,    bit_byte, dot,      bit_no,   0 },
   { 0xA3, 1, 2, inc,   dptr,     0 },
   { 0xA4, 1, 4, mul,   ab,       0 },
   { 0xA5, 1, 1, rsrvd, 0 },
@@ -275,9 +275,9 @@ const int cpu_instr_tkn[][INSTR_TKN_BUF] =
   { 0xAD, 2, 2, mov,   r5,       comma,    addr_8,   0 },
   { 0xAE, 2, 2, mov,   r6,       comma,    addr_8,   0 },
   { 0xAF, 2, 2, mov,   r7,       comma,    addr_8,   0 },
-  { 0xB0, 2, 2, anl,   c,        comma,    slash,    bit_addr,  0 },
+  { 0xB0, 2, 2, anl,   c,        comma,    slash,    bit_byte, dot,      bit_no,   0 },
   { 0xB1, 2, 2, ac_dup,addr_11,  0 },
-  { 0xB2, 2, 1, cpl,   bit_addr, 0 },
+  { 0xB2, 2, 1, cpl,   bit_byte, dot,      bit_no,   0 },
   { 0xB3, 1, 1, cpl,   c,        0 },
   { 0xB4, 3, 2, cjne,  a,        comma,    pound,    data_8,   comma,    rel_addr, 0 },
   { 0xB5, 3, 2, cjne,  a,        comma,    addr_8,   comma,    rel_addr, 0 },
@@ -293,7 +293,7 @@ const int cpu_instr_tkn[][INSTR_TKN_BUF] =
   { 0xBF, 3, 2, cjne,  r7,       comma,    pound,    data_8,   comma,    rel_addr, 0 },
   { 0xC0, 2, 2, push,  addr_8,   0 },
   { 0xC1, 2, 2, aj_dup,addr_11,  0 },
-  { 0xC2, 2, 1, clr,   bit_addr, 0 },
+  { 0xC2, 2, 1, clr,   bit_byte, dot,      bit_no,   0 },
   { 0xC3, 1, 1, clr,   c,        0 },
   { 0xC4, 1, 1, swap,  a,        0 },
   { 0xC5, 2, 1, xch,   a,        comma,    addr_8,   0 },
@@ -309,7 +309,7 @@ const int cpu_instr_tkn[][INSTR_TKN_BUF] =
   { 0xCF, 1, 1, xch,   a,        comma,    r7,       0 },
   { 0xD0, 2, 2, pop,   addr_8,   0 },
   { 0xD1, 2, 2, ac_dup,addr_11,  0 },
-  { 0xD2, 2, 1, setb,  bit_addr, 0 },
+  { 0xD2, 2, 1, setb,  bit_byte, dot,      bit_no,   0 },
   { 0xD3, 1, 1, setb,  c,        0 },
   { 0xD4, 1, 1, da,    a,        0 },
   { 0xD5, 3, 2, djnz,  addr_8,   comma,    rel_addr, 0 },
@@ -355,18 +355,18 @@ const int cpu_instr_tkn[][INSTR_TKN_BUF] =
   { 0xFD, 1, 1, mov,   r5,       comma,    a,        0 },
   { 0xFE, 1, 1, mov,   r6,       comma,    a,        0 },
   { 0xFF, 1, 1, mov,   r7,       comma,    a,        0 },
-  { 0x10, 3, 2, jbc,   bit_byte, dot,      bit_no,   comma,    rel_addr, 0 },
-  { 0x20, 3, 2, jb,    bit_byte, dot,      bit_no,   comma,    rel_addr, 0 },
-  { 0x30, 3, 2, jnb,   bit_byte, dot,      bit_no,   comma,    rel_addr, 0 },
-  { 0x72, 2, 2, orl,   c,        comma,    bit_byte, dot,      bit_no,   0 },
-  { 0x82, 2, 2, anl,   c,        comma,    bit_byte, dot,      bit_no,   0 },
-  { 0x92, 2, 2, mov,   bit_byte, dot,      bit_no,   comma,    c,        0 },
-  { 0xA0, 2, 2, orl,   c,        comma,    slash,    bit_byte, dot,      bit_no,   0 },
-  { 0xA2, 2, 1, mov,   c,        comma,    bit_byte, dot,      bit_no,   0 },
-  { 0xB0, 2, 2, anl,   c,        comma,    slash,    bit_byte, dot,      bit_no,   0 },
-  { 0xB2, 2, 1, cpl,   bit_byte, dot,      bit_no,   0 },
-  { 0xC2, 2, 1, clr,   bit_byte, dot,      bit_no,   0 },
-  { 0xD2, 2, 1, setb,  bit_byte, dot,      bit_no,   0 },
+  { 0x10, 3, 2, jbc,   bit_addr, comma,    rel_addr, 0 },
+  { 0x20, 3, 2, jb,    bit_addr, comma,    rel_addr, 0 },
+  { 0x30, 3, 2, jnb,   bit_addr, comma,    rel_addr, 0 },
+  { 0x72, 2, 2, orl,   c,        comma,    bit_addr, 0 },
+  { 0x82, 2, 2, anl,   c,        comma,    bit_addr, 0 },
+  { 0x92, 2, 2, mov,   bit_addr, comma,    c,        0 },
+  { 0xA0, 2, 2, orl,   c,        comma,    slash,    bit_addr,  0 },
+  { 0xA2, 2, 1, mov,   c,        comma,    bit_addr, 0 },
+  { 0xB0, 2, 2, anl,   c,        comma,    slash,    bit_addr,  0 },
+  { 0xB2, 2, 1, cpl,   bit_addr, 0 },
+  { 0xC2, 2, 1, clr,   bit_addr, 0 },
+  { 0xD2, 2, 1, setb,  bit_addr, 0 },
   { UNDEF }
 };
 
@@ -474,10 +474,6 @@ const str_storage procErrMsg[] =
 
 int handleInstr(const int *theInstr, int *tkn)
 {
-  int t;
-  int tkn_pos = 0;
-  int handleFlag = FALSE;
-
   memory[pc] = theInstr[INSTR_TKN_OP];
 
   if (theInstr[INSTR_TKN_OP] == 0x85) /* change order of mov direct, direct */
@@ -490,49 +486,44 @@ int handleInstr(const int *theInstr, int *tkn)
       ++pc;
       return TRUE;
     }
+  return FALSE;
+}
 
-  for (t=INSTR_TKN_INSTR+1; theInstr[t]; ++t)
+int handleTkn(const int theInstrTkn, int *tkn, int *tkn_pos)
+{
+  int handleFlag = TRUE;
+
+  switch (theInstrTkn)
     {
-      switch (theInstr[t])
-	{
-	case bit_addr:
-	  tkn_pos += 2;
-	  if (tkn[tkn_pos]>BYTE_MAX || tkn[tkn_pos+2]<0) longjmp(err, bit_range);
-	  memory[++pc] = tkn[tkn_pos];
-	  handleFlag = TRUE;
-	  break;
-	case bit_byte: 
-	  tkn_pos += 2;
-	  if (bitRange(tkn[tkn_pos]) == UNDEF) longjmp(err, no_bitbyte);
-	  break;
-	case dot:
-	  ++tkn_pos;
-	  if (tkn[tkn_pos-2] != number || tkn[tkn_pos+1] != number)
-	    longjmp(err, bit_syntax);
-	  memory[++pc] = tkn[tkn_pos-1] + tkn[tkn_pos+2];
-	  handleFlag = TRUE;
-	  break;
-	case bit_no:
-	  tkn_pos += 2;
-	  if (tkn[tkn_pos]<0 || tkn[tkn_pos]>7) longjmp(err, bitno_range);
-	  break;
-	case addr_11:
-	  tkn_pos += 2;
-	  if (tkn[tkn_pos]>0x7FF) longjmp(err, addr11_range);
-	  memory[pc] |= (tkn[tkn_pos] & 0x700)/8;
-	  memory[++pc] = getLow(tkn[tkn_pos]);
-	  handleFlag = TRUE;
-	  break;
-	default:
-	  ++tkn_pos;
-	  break;
-	}
+    case bit_addr:
+      *tkn_pos += 2;
+      if (tkn[*tkn_pos]>BYTE_MAX || tkn[*tkn_pos+2]<0) longjmp(err, bit_range);
+      memory[pc++] = tkn[*tkn_pos];
+      break;
+    case bit_byte: 
+      *tkn_pos += 2;
+      if (bitRange(tkn[*tkn_pos]) == UNDEF) longjmp(err, no_bitbyte);
+      break;
+    case dot:
+      ++*tkn_pos;
+      if (tkn[*tkn_pos-2] != number || tkn[*tkn_pos+1] != number)
+	longjmp(err, bit_syntax);
+      memory[pc++] = tkn[*tkn_pos-1] + tkn[*tkn_pos+2];
+      break;
+    case bit_no:
+      *tkn_pos += 2;
+      if (tkn[*tkn_pos]<0 || tkn[*tkn_pos]>7) longjmp(err, bitno_range);
+      break;
+    case addr_11:
+      *tkn_pos += 2;
+      if (tkn[*tkn_pos]>0x7FF) longjmp(err, addr11_range);
+      memory[pc-1] |= (tkn[*tkn_pos] & 0x700)/8;
+      memory[pc++] = getLow(tkn[*tkn_pos]);
+      break;
+    default:
+      handleFlag = FALSE;
+      break;
     }
-  if (handleFlag)
-    {
-      ++pc;
-      return TRUE;
-    }
-  else
-    return FALSE;
+
+  return handleFlag;
 }

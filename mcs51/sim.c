@@ -670,41 +670,41 @@ void doStep()
     case 0x93: /* movc a, @a+dptr */
       *acc = memory[*acc + *dpl + *dph*0x100];
       break;
-    case 0x94: /* addc a, #data */
+    case 0x94: /* subb a, #data */
       doSub(ram[pc+1]);
       break;
-    case 0x95: /* addc a, addr */
+    case 0x95: /* subb a, addr */
       addr = memory[pc+1];
       doSub(ram[addr]);
       break;
-    case 0x96: /* addc a, @r0 */
+    case 0x96: /* subb a, @r0 */
       doSub(ram[*reg0]);
       break;
-    case 0x97: /* addc a, @r1 */
+    case 0x97: /* subb a, @r1 */
       doSub(ram[*reg1]);
       break;
-    case 0x98: /* addc a, r0 */
+    case 0x98: /* subb a, r0 */
       doSub(*reg0);
       break;
-    case 0x99: /* addc a, r1 */
+    case 0x99: /* subb a, r1 */
       doSub(*reg1);
       break;
-    case 0x9A: /* addc a, r2 */
+    case 0x9A: /* subb a, r2 */
       doSub(*reg2);
       break;
-    case 0x9B: /* addc a, r3 */
+    case 0x9B: /* subb a, r3 */
       doSub(*reg3);
       break;
-    case 0x9C: /* addc a, r4 */
+    case 0x9C: /* subb a, r4 */
       doSub(*reg4);
       break;
-    case 0x9D: /* addc a, r5 */
+    case 0x9D: /* subb a, r5 */
       doSub(*reg5);
       break;
-    case 0x9E: /* addc a, r6 */
+    case 0x9E: /* subb a, r6 */
       doSub(*reg6);
       break;
-    case 0x9F: /* addc a, r7 */
+    case 0x9F: /* subb a, r7 */
       doSub(*reg7);
       break;
     case 0xA0: /* orl c, /bit_addr */
