@@ -22,5 +22,6 @@ The processor specific assembler and simulator will be in the processor
 directories. Run asm -h to get help for the assembler or enter h as a command 
 in the simulator.
 
+The homepage for this project is at http://microsim.sourceforge.net
 Any bugs, patches or feature suggestions can be sent to me at
 jim@termanweb.net

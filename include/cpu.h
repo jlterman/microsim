@@ -99,6 +99,11 @@ extern
 #endif
 void dumpMemory(FILE*);
 
+#ifndef SIM_CPU_LOCAL
+extern 
+#endif
+void restoreMemory(FILE*);
+
 /* number of tokens needed to define cpu instr
  */
 #define INSTR_TKN_BUF 12

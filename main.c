@@ -994,12 +994,13 @@ static FILE *safeOpen(char* filename, char* mode)
  */
 static void printSimHelp(void)
 {
-  printf("sim [-q] file.asm\n"
-	 "Load the file.asm assembly file and begin simmulating it.\n"
+  printf("sim [-qc] file.asm\n"
+	 "Load the file.asm assembly file and begin simulating it.\n"
 	 "Type 'h' for help inside the simulator\n\n"
 	 "    -h    print this message and exit\n"
 	 "    -V    print simulator version and exit\n"
 	 "    -q    don't print out version info on startup\n"
+	 "    -c    load memory dump in file.core\n"
 	 " --asm    Run this program as an assembler. Run 'sim --asm -h' for details\n"
 	 "\nProject homepage: http://microsim.sourceforge.net\n"
 	 "Send bug reports to jim@termanweb.net\n");
@@ -1009,7 +1010,7 @@ static void printSimHelp(void)
 /* load file filename into lines array
  */
 static void loadFile(char *filename)
-{
+{+
   static int size_Lines = 0;          /* max no. of lines in **lines */
   static int num_Lines = 0;           /* no of lines stored */  
   int l;
@@ -1139,9 +1140,11 @@ void myhandler(int signum)
  */
 int main_sim(int argc, char *argv[])
 {
-  int c, errNo, i, l, numErr = 0, silent = FALSE;
+  int c, errNo, i, l, numErr = 0, silent = FALSE, core = FALSE;
+  char *line, *coreFile = 0, *temp = getTmpFile("sim");
   unsigned int m;
-  char *line, *temp = getTmpFile("sim");
+  FILE *fd;
+
   if (argc<2) printSimHelp();
 
   for (i = 1; i < argc; ++i) {
@@ -1149,13 +1152,16 @@ int main_sim(int argc, char *argv[])
     if (!strcmp(argv[i], "-cd")) argv[i] = "-d";
   }
 
-  while ((c = getopt(argc, argv, "qfVhd:")) != EOF)
+  while ((c = getopt(argc, argv, "cqfVhd:")) != EOF)
     {
       switch (c)
 	{
 	case 'V':
 	  printf(sim_version); printf(cpu_version);
 	  exit(0);
+	  break;
+	case 'c':
+	  core = TRUE;
 	  break;
 	case 'd':
 	  chdir(optarg);
@@ -1201,7 +1207,15 @@ int main_sim(int argc, char *argv[])
   safeCloseTmp(lst, TRUE);
 
   run_sim = TRUE;
-  reset();
+  if (core)
+    {
+      coreFile = newSuffix(filename, "core");
+      fd = safeOpen(coreFile, "r");
+      restoreMemory(fd);
+      fclose(fd);
+    }
+  else
+    reset();
   if (!silent) 
     {
       printf(sim_version); 
@@ -1239,7 +1253,8 @@ static void printAsmHelp(void)
 {
   printf("asm [-vqlL] [-o file.obj] file1.asm [[-o file2.obj] file2.asm] ...\n"
 	 "Assemble the file(s) file1.asm file2.asm ..., writing\n"
-	 "the object code to the file(s) file1.obj file2.obj ...\n\n");
+	 "the object code to the file(s) file1.obj file2.obj ...\n"
+	 "Assembly listings will be written to file1.lst fil2.lst ...\n\n");
   printf("    -V   print version and exit\n"
 	 "    -h   print this message and exit\n"
 	 "    -v   run in verbose mode\n"

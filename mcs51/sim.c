@@ -514,30 +514,103 @@ int *getMemory(int addr, char m)
  */
 void dumpMemory(FILE* fd)
 {
-  int i, j;
+  int i;
 
-  fprintf(fd, "PC: %04X", pc);
-  for (i=0; i<8; ++i)
+  fprintf(fd, "PC: %04X\n", pc);
+  for (i=0; i<128; i+=16)
     {
-      fprintf(fd, "\n%02X:", i*16);
-      for (j=0; j<16; ++j) fprintf(fd, " %02X", ram[i*16 + j]);
+      fprintf(fd, "%02X "
+	      "%02X %02X %02X %02X %02X %02X %02X %02X "
+	      "%02X %02X %02X %02X %02X %02X %02X %02X\n", i,
+	      ram[i], ram[i + 1], ram[i + 2], ram[i + 3], 
+	      ram[i + 4], ram[i + 5], ram[i + 6], ram[i + 7],
+	      ram[i + 8], ram[i + 9], ram[i + 10], ram[i + 11], 
+	      ram[i + 12], ram[i + 13], ram[i + 14], ram[i + 15]);
     }
-  for (i=16; i<24; ++i)
+  for (i=256; i<384; i+=16)
     {
-      fprintf(fd, "\n%02X:", (i - 8)*16);
-      for (j=0; j<16; ++j) fprintf(fd, " %02X", ram[i*16 + j]);
-    }
-  for (i=8; i<16; ++i)
+      fprintf(fd, "%02X "
+	      "%02X %02X %02X %02X %02X %02X %02X %02X "
+	      "%02X %02X %02X %02X %02X %02X %02X %02X\n", i,
+	      ram[i], ram[i + 1], ram[i + 2], ram[i + 3], 
+	      ram[i + 4], ram[i + 5], ram[i + 6], ram[i + 7],
+ 	      ram[i + 8], ram[i + 9], ram[i + 10], ram[i + 11], 
+	      ram[i + 12], ram[i + 13], ram[i + 14], ram[i + 15]);
+   }
+  for (i=128; i<256; i+=16)
     {
-      fprintf(fd, "\nSF%02X:", i*16);
-      for (j=0; j<16; ++j) fprintf(fd, " %02X", ram[i*16 + j]);
+      fprintf(fd, "SF%02X "
+	      "%02X %02X %02X %02X %02X %02X %02X %02X "
+	      "%02X %02X %02X %02X %02X %02X %02X %02X\n", i,
+	      ram[i], ram[i + 1], ram[i + 2], ram[i + 3], 
+	      ram[i + 4], ram[i + 5], ram[i + 6], ram[i + 7],
+	      ram[i + 8], ram[i + 9], ram[i + 10], ram[i + 11], 
+	      ram[i + 12], ram[i + 13], ram[i + 14], ram[i + 15]);
     }
-  for (i=0; i<4096; ++i)
+  for (i=0; i<65536; i+=16)
     {
-      fprintf(fd, "\n%04X:", i*16);
-      for (j=0; j<16; ++j) fprintf(fd, " %02X", xram[i*16 + j]);
+       fprintf(fd, "%04X "
+	       "%02X %02X %02X %02X %02X %02X %02X %02X "
+	       "%02X %02X %02X %02X %02X %02X %02X %02X\n", i,
+	       xram[i], xram[i + 1], xram[i + 2], xram[i + 3], 
+	       xram[i + 4], xram[i + 5], xram[i + 6], xram[i + 7],
+	       xram[i + 8], xram[i + 9], xram[i + 10], xram[i + 11], 
+	       xram[i + 12], xram[i + 13], xram[i + 14], xram[i + 15]);
+   }
+}
+
+/* Load the file into memory produced by dumpMemory
+ */
+void restoreMemory(FILE* fd)
+{
+  int i, addr;
+
+  fscanf(fd, "PC: %04X\n", (unsigned int*) &pc);
+  for (i=0; i<128; i+=16)
+    {
+      fscanf(fd, "%*[a-fA-F0-9] "
+	     "%02X %02X %02X %02X %02X %02X %02X %02X "
+	     "%02X %02X %02X %02X %02X %02X %02X %02X\n", 
+	     (unsigned int*) ram + i, (unsigned int*) ram + i + 1, (unsigned int*) ram + i + 2, (unsigned int*) ram + i + 3, 
+	     (unsigned int*) ram + i + 4, (unsigned int*) ram + i + 5, (unsigned int*) ram + i + 6, (unsigned int*) ram + i + 7,
+	     (unsigned int*) ram + i + 8, (unsigned int*) ram + i + 9, (unsigned int*) ram + i + 10, (unsigned int*) ram + i + 11,
+	     (unsigned int*) ram + i + 12, (unsigned int*) ram + i + 13, (unsigned int*) ram + i + 14, (unsigned int*) ram + i + 15);
     }
-  fprintf(fd, "\n");
+  for (i=256; i<384; i+=16)
+    {
+      fscanf(fd, "%*[a-fA-F0-9] "
+	     "%02X %02X %02X %02X %02X %02X %02X %02X "
+	     "%02X %02X %02X %02X %02X %02X %02X %02X\n", 
+	     (unsigned int*) ram + i, (unsigned int*) ram + i + 1, (unsigned int*) ram + i + 2, (unsigned int*) ram + i + 3, 
+	     (unsigned int*) ram + i + 4, (unsigned int*) ram + i + 5, (unsigned int*) ram + i + 6, (unsigned int*) ram + i + 7,
+	     (unsigned int*) ram + i + 8, (unsigned int*) ram + i + 9, (unsigned int*) ram + i + 10, (unsigned int*) ram + i + 11,
+	     (unsigned int*) ram + i + 12, (unsigned int*) ram + i + 13, (unsigned int*) ram + i + 14, (unsigned int*) ram + i + 15);
+    }
+  for (i=128; i<256; i+=16)
+    {
+      fscanf(fd, "SF%*[a-fA-F0-9] "
+	     "%02X %02X %02X %02X %02X %02X %02X %02X "
+	     "%02X %02X %02X %02X %02X %02X %02X %02X\n", 
+	     (unsigned int*) ram + i, (unsigned int*) ram + i + 1, (unsigned int*) ram + i + 2, (unsigned int*) ram + i + 3, 
+	     (unsigned int*) ram + i + 4, (unsigned int*) ram + i + 5, (unsigned int*) ram + i + 6, (unsigned int*) ram + i + 7,
+	     (unsigned int*) ram + i + 8, (unsigned int*) ram + i + 9, (unsigned int*) ram + i + 10, (unsigned int*) ram + i + 11,
+	     (unsigned int*) ram + i + 12, (unsigned int*) ram + i + 13, (unsigned int*) ram + i + 14, (unsigned int*) ram + i + 15);
+    }
+  for (i=0; i<65536; i+=16)
+    {
+       fscanf(fd, "%*[a-fA-F0-9] "
+	      "%02X %02X %02X %02X %02X %02X %02X %02X "
+	      "%02X %02X %02X %02X %02X %02X %02X %02X\n", 
+	      (unsigned int*) xram + i, (unsigned int*) xram + i + 1, (unsigned int*) xram + i + 2, (unsigned int*) xram + i + 3, 
+	      (unsigned int*) xram + i + 4, (unsigned int*) xram + i + 5, (unsigned int*) xram + i + 6, (unsigned int*) xram + i + 7,
+	      (unsigned int*) xram + i + 8, (unsigned int*) xram + i + 9, (unsigned int*) xram + i + 10, (unsigned int*) xram + i + 11,
+	      (unsigned int*) xram + i + 12, (unsigned int*) xram + i + 13, (unsigned int*) xram + i + 14, (unsigned int*) xram + i + 15);
+   }
+
+  /* update data register back address form new PSW
+   */
+  addr = ram[PSW] & (rs1 + rs0);
+  for (i = 0; i<8; ++i) reg[i] = ram + i + addr;
 }
 
 /***************************************

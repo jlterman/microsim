@@ -472,18 +472,43 @@ int *getMemory(int addr, char m)
  */
 void dumpMemory(FILE* fd)
 {
-  int i, j;
+  int i;
+  
+  fprintf(fd, " A: %02X, X: %02X, Y: %02X, SP: %02X, PS: %02X, PC: %04X\n", 
+	  acc, xreg, yreg, sptr, psr, pc);
 
-  fprintf(fd, " A: %02X\n", acc);
-  fprintf(fd, " X: %02X\n", xreg);
-  fprintf(fd, " Y: %02X\n", yreg);
-  fprintf(fd, "SP: %02X\n", sptr);
-  fprintf(fd, "PS: %02X\n", psr);
-  fprintf(fd, "PC: %04X", pc);
-  for (i=0; i<4096; ++i)
+  for (i=0; i<65536; i+=16)
     {
-      fprintf(fd, "\n%04X:", i*16);
-      for (j=0; j<16; ++j) fprintf(fd, " %02X", memory[i*16 + j]);
+       fprintf(fd, "%04X "
+	       "%02X %02X %02X %02X %02X %02X %02X %02X "
+	       "%02X %02X %02X %02X %02X %02X %02X %02X\n", i,
+	       memory[i], memory[i + 1], memory[i + 2], memory[i + 3], 
+	       memory[i + 4], memory[i + 5], memory[i + 6], memory[i + 7],
+	       memory[i + 8], memory[i + 9], memory[i + 10], memory[i + 11], 
+	       memory[i + 12], memory[i + 13], memory[i + 14], memory[i + 15]);
+   }
+}
+
+/* Load the file into memory produced by dumpMemory
+ */
+void restoreMemory(FILE* fd)
+{
+  int i;
+  
+  fscanf(fd, " A: %02X, X: %02X, Y: %02X, SP: %02X, PS: %02X, PC: %04X\n", 
+	 (unsigned int*) &acc, (unsigned int*) &xreg, (unsigned int*) &yreg, 
+	 (unsigned int*) &sptr, (unsigned int*) &psr, (unsigned int*) &pc);
+
+  for (i=0; i<65536; i+=16)
+    {
+       fscanf(fd, "%*[a-fA-F0-9] "
+	      "%02X %02X %02X %02X %02X %02X %02X %02X "
+	      "%02X %02X %02X %02X %02X %02X %02X %02X\n", 
+	      (unsigned int*) memory + i, (unsigned int*) memory + i + 1, (unsigned int*) memory + i + 2, 
+	      (unsigned int*) memory + i + 3, (unsigned int*) memory + i + 4, (unsigned int*) memory + i + 5, 
+	      (unsigned int*) memory + i + 6, (unsigned int*) memory + i + 7, (unsigned int*) memory + i + 8, 
+	      (unsigned int*) memory + i + 9, (unsigned int*) memory + i + 10, (unsigned int*) memory + i + 11,
+	      (unsigned int*) memory + i + 12, (unsigned int*) memory + i + 13, (unsigned int*) memory + i + 14, 
+	      (unsigned int*) memory + i + 15);
     }
-  fprintf(fd, "\n");
 }
