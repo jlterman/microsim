@@ -49,7 +49,7 @@ enum errNo
   {
     no_char = FRONTERR+1, undef_label, labval_undef, bad_number, bad_expr, zero_div, 
     no_op, undef_org, noexpr_org, miss_colon, bad_equ, bad_db, bad_char, miss_par, 
-    no_leftPar
+    no_leftPar, bad_addr
   };
 
 const str_storage frontErrMsg[] = 
@@ -68,7 +68,8 @@ const str_storage frontErrMsg[] =
     "Bad db/dw directive statement",
     "Bad character constant",
     "Missing closing paranthesis",
-    "Missing opening paranthesis"
+    "Missing opening paranthesis",
+    "Bad memory address"
   };
 
 /* All labels have to start with an alpha char; Afterwards may have any 
@@ -109,7 +110,9 @@ static const int isBase_table[ASCII_MAX] =
 /* ops contains all  existing supported mathematical 
  * operators in reverse order of precedence (follows C).
  */
-const str_storage ops = "|^&-+%/*";
+static const str_storage binary_ops = "=|^&<>-+%/*";
+
+static const str_storage unitary_ops = "~!+-";
 
 /* isOp macro returns true if char is operator
  */
@@ -144,6 +147,9 @@ static const int isExpr_table[ASCII_MAX] =
     1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 0, 1, 0, 0  /* pqrstuvwxyz{|}~  */
  };
 
+/* table of characters that have a special meaning
+ * when slashed for character constants.
+ */
 #define slashChar(x) slashChar_table[(int) x]
 
 static const char slashChar_table[ASCII_MAX] =
@@ -166,13 +172,18 @@ static const char slashChar_table[ASCII_MAX] =
     0, 0, 0, 0, 0, 0, 0, 0,
   };
 
-/* Macros that return legal tokens from defn's
- * processor specific header file
+/* Macros that return legal tokens from special to the processor
+ * isCharToken_table defined in back.c in processor directory
  */
 #define isCharToken(x) isCharToken_table[(int) x]
 
+/* Macros that return legal tokens from special to the processor
+ * isToken_table defined in back.c in processor directory
+ */
 #define isToken(x) (isToken_table[(int) x] | isLabel_table[(int) x])
 
+/* assembly front end tokens
+ */
 #define ASM_DIRCTV_LEN  5
 
 static const char *asm_dirctv[ASM_DIRCTV_LEN] = 
@@ -198,6 +209,11 @@ int num_labels;                 /* number of defined labels */
 int *sort_labels = NULL;        /* array of sorted labels */
 int size_buf_labels;            /* size of label buffer */
 
+/* binarySearch does a binary search of the sortted array of strings
+ * that are accessed via the function getName. Returns zero if it 
+ * finds string with index placed in *index. Otherwise, returns
+ * -1 and index of string just before it in sort.
+ */
 typedef const char* (*getStrFunc)(int);
 
 static int binarySearch(const char* name, int *index, getStrFunc getName)
@@ -230,6 +246,8 @@ static int binarySearch(const char* name, int *index, getStrFunc getName)
   return result;
 }
 
+/* helper function for searching pre-sorted front end tokens
+ */
 static const char* getDirctvName(int index)
 {
  if (index<ASM_DIRCTV_LEN)
@@ -242,6 +260,9 @@ static const char* getDirctvName(int index)
     }
 }
 
+/* helper functions searching thru sorted list of labels
+ * sort_labels is array of sorted indexes of unsorted array labels
+ */
 static const char *getLabelName(int index)
 {
   if (index<num_labels)
@@ -254,10 +275,10 @@ static const char *getLabelName(int index)
     }
 }
 
-/* nextToken reads buffer staring at position pos. It returns a substr
- * that is made up of legal characters for a token
- * Then it does a binary search of the array tokens.
- * If no match checks for label, number, and expr
+/* nextToken reads buffer staring at position pos. The token
+ * found is placed in character array token.
+ * First it looks for comma, character constant, single char token,
+ * token, or label. If none matches it returns possible expr
  */
 static int nextToken(char *token, const char* buffer)
 {
@@ -272,7 +293,7 @@ static int nextToken(char *token, const char* buffer)
      { 
        pos = start+1; return comma;
      }
-   if (buffer[start]=='\'')
+   if (buffer[start]=='\'') /* look for char constant */
      {
        index = 0;
        token[index++] = buffer[start++];
@@ -289,7 +310,7 @@ static int nextToken(char *token, const char* buffer)
 
   if (!isCharToken(buffer[start]) && !(isToken(buffer[start]) || isExpr(buffer[start]))) longjmp(err, no_char);
 
-  if (isCharToken(buffer[start]))
+  if (isCharToken(buffer[start])) /* look for single char tokens before all others */
     {
       pos = start + 1;
       token[0] = buffer[start]; token[1] = '\0';
@@ -345,11 +366,14 @@ static int nextToken(char *token, const char* buffer)
 	}
     }
 
+  /* find expression substring. Add to substring as longs as 
+   * legal expression char or embedded space
+   */
   end = start + 1;
   while (buffer[end] && (isExpr(buffer[end]) || isspace(buffer[end]))) ++end;
   
   d = 0;
-  for (index=start; index<end; ++index) /* arith op can be part of tokens, remove all spaces */
+  for (index=start; index<end; ++index) /* put expression substr in token, remove all spaces */
     {
       if (!isspace(buffer[index])) token[d++] = buffer[index];
     }
@@ -369,40 +393,47 @@ static int nextToken(char *token, const char* buffer)
   return expr;  /* has to be expr, will check syntax later */
 }
 
-
+/* if label name does not exists, create label and set its value.
+ * if label name already exists change its value to value if overWrite is TRUE.
+ */
 static int setLabel(const char *name, int value, int overWrite)
 {
   int index;
 
   if (binarySearch(name, &index, getLabelName))
     {
-      ++index;
-      labels[num_labels].name[LBL_LEN_MAX] = '\0';
-      strncpy(labels[num_labels].name, name, LBL_LEN_MAX);
-
-      if (num_labels+1>LBL_MAX)
+      if (num_labels+1>LBL_MAX) /* binarySearch will only search LBL_MAX number of labels */
 	{
 	  printf("Can't define more labels.\n"); exit(1);
 	}
-      if (num_labels+1>size_buf_labels)
+      if (num_labels+1>size_buf_labels) /* out of space, realloc more memory for labels */
 	{
 	  size_buf_labels += LBL_BUF;
 	  safeRealloc(labels, label_type, size_buf_labels);
 	  safeRealloc(sort_labels, int, size_buf_labels);
 	}
+      labels[num_labels].name[LBL_LEN_MAX] = '\0';
+      strncpy(labels[num_labels].name, name, LBL_LEN_MAX); /* create new label */
       
+      /* index is location where new label should be placed in sorted list
+       * Push up rest of array by 1 and place index of new label
+       */
+      ++index;
       memmove((void*) (sort_labels + index + 1), (void*) (sort_labels  + index), 
 	      (num_labels - index)*sizeof(int));
       sort_labels[index] = num_labels;
       ++num_labels;      
     }
   else if (!overWrite)
-    return sort_labels[index];
+    return sort_labels[index]; /* don't update value of label */
 
-  labels[sort_labels[index]].value = value;
-  return sort_labels[index];
+  labels[sort_labels[index]].value = value; /* update value of label */
+  return sort_labels[index];                /* return its locations in array labels */
 }
 
+/* get value of label name. Causes fatal error if 
+ * label does not exist or has undefined value
+ */
 int getLabelValue(const char *name)
 {
   int index;
@@ -420,6 +451,8 @@ int getLabelValue(const char *name)
     }
 }
 
+/* print out all labels to file handler list
+ */
 void printLabels(FILE* lst)
 {
   int i;
@@ -430,6 +463,10 @@ void printLabels(FILE* lst)
     }
 }
 
+/* getNumBase reads alphanumberic string as a number of 
+ * a given base. let is terminating character of number
+ * to be ignored.
+ */
 static int getNumBase(const char *b, int base, char let)
 {
   int value = 0;
@@ -445,6 +482,13 @@ static int getNumBase(const char *b, int base, char let)
   return value;
 }
 
+/* getNumber will attempt to parse string number as a numerical
+ * constant. Numbers beginning with "0x" will be interpeted as 
+ * hex. A number that begins with '0' will be interpeted as ocatal.
+ * A number that begins with a number and ends with 'b', 'd', 'h'
+ * or 'o' will be interpeted as binary, decimal, hex or octal,
+ * respectively. A simple number is by default decimal.
+ */
 static int getNumber(const char *number)
 {
   int value = 0;
@@ -472,6 +516,10 @@ static int getNumber(const char *number)
   return value;
 }
 
+/* this routine will search expression string expr until to finds left paranthesis 
+ * that matches the right paranthesis at expr[pos-1]. Intermediate (..) pairs are 
+ * skipped over. Fatal error is generated if right par is not found
+ */
 static int findClosePar(const char *expr, int pos)
 {
   int level = 1;
@@ -527,29 +575,46 @@ static int findOp(const char op, const char *expr)
   return UNDEF;
 }
 
-static int getExpr(const char *expr)
+/* getExpr returns the value of the expression given it. All labels should
+ * exists with defined values. Division by zero will generate fatal error.
+ * Local var subexpr is used to pass substrings to recursive getExpr calls.
+ */
+int getExpr(const char *expr)
 {
   int pos, p, start, lvalue, rvalue, value;
   char subexpr[BUF_SIZE];
 
+  /* if expression is (..), strip off paren's and return value 
+   */
   if (expr[0]=='(' && !expr[findClosePar(expr, 0)+1])
     {
-      strncpy(subexpr, expr+1, strlen(expr)-2); 
-      subexpr[strlen(expr)-2] = '\0';
+      strncpy(subexpr, expr+1, strlen(expr)-2); /* only strip par's if  matching   */
+      subexpr[strlen(expr)-2] = '\0';           /* right par at end of string expr */
       return getExpr(subexpr);
     }
   else if (findOp(')', expr)>0)
     longjmp(err, no_leftPar);
 
-  start = (expr[0] == '-' || expr[0] == '+');
+  /* check if expression begins with unitary operator.
+   */ 
   p = 0;
-  while (ops[p])
+  while (unitary_ops[p]) { if (expr[0] == unitary_ops[p++]) break; }
+  start = (unitary_ops[p] != '\0');
+
+  /* look for lowest precedence arith operator not inside paranthesis
+   */
+  p = 0;
+  while (binary_ops[p])
     {
-      pos = findOp(ops[p], expr+start) + start;
+      pos = findOp(binary_ops[p], expr+start) + start;
 
       if (pos>0) break;
       ++p;
     }
+
+  /* if no operator found, expr is either address value, label or number.
+   * Skip over leading unitary operator.
+   */
   if (pos<0)
     {
       if (isalpha(expr[start]))
@@ -560,15 +625,46 @@ static int getExpr(const char *expr)
 	{
 	  value = getNumber(expr+start);
 	}
-      if (start && expr[0] == '-')
-	return -value;
+      /*      else if (expr[start] == '$')
+	{
+	  strcpy(subexpr, expr+start+1);
+	  if (subexpr[strlen(subexpr)-1] == ':') longjmp(err, bad_addr);
+	  if (subexpr[strlen(subexpr)-2] == ':')
+	    {
+	      subexpr[strlen(subexpr)-2] == '\0';
+	      value = getMemory(getExpr(subexpr), subexpr[strlen(subexpr)-1]);
+	    }
+	  else
+	    {
+	      value = getMemory(getExpr(subexpr), '\0');
+	    }
+	  if (value == UNDEF) longjmp(err, bad_addr);
+	  }*/
       else
-	return value;
+	{
+	  longjmp(err, no_op); /* unknown opeator???? */
+	}
+      if (!start) return value;
+
+      switch (expr[0])
+	{
+	case '+': return value; break;
+	case '-': return -value; break;
+	case '!': return !value; break;
+	case '~': return ~value; break;
+	default: 
+	  longjmp(err, no_op); /* unknown opeator???? */
+	  break;
+	}
     }
 
+  /* operator was found, expr = exprLeft op exprRight.  Get value of
+   * exprLeftand exprRight by extrating substr and calling getExpr
+   */
   strncpy(subexpr, expr, pos); subexpr[pos] = '\0';
   lvalue = getExpr(subexpr);
   
+  if (expr[pos] == '=') ++pos;
   strcpy(subexpr, expr+pos+1);
   rvalue = getExpr(subexpr);
      
@@ -580,6 +676,8 @@ static int getExpr(const char *expr)
     case '&': value = lvalue & rvalue; break;
     case '|': value = lvalue | rvalue; break;
     case '^': value = lvalue ^ rvalue; break;
+    case '>': value = lvalue > rvalue; break;
+    case '<': value = lvalue < rvalue; break;
     case '/': 
       if (!rvalue) longjmp(err, zero_div);
       value = lvalue / rvalue;
@@ -590,8 +688,20 @@ static int getExpr(const char *expr)
       else
 	return 0;
       break;
+    case '=':
+      switch (expr[pos-1])
+	{
+	case '>':  value = lvalue >= rvalue; break;
+	case '<':  value = lvalue <= rvalue; break;
+	case '!':  value = lvalue != rvalue; break;
+	case '=':  value = lvalue == rvalue; break;
+	default: 
+	  longjmp(err, no_op); /* unknown opeator???? */
+	  break;
+	}
+      break;
     default: 
-      longjmp(err, no_op);
+      longjmp(err, no_op); /* unknown opeator???? */
       break;
     }
 
@@ -787,7 +897,7 @@ void secondPass(const char *buffer)
 
 int doPass(passFunc pass)
 {
-  int errNo, oldPC, s, d, line = 0, numErr = 0;
+  int errNo, oldPC = 0, s, d, line = 0, numErr = 0;
 
   initLabels();
   pc = 0;
