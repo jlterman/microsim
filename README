@@ -1,0 +1,21 @@
+Readme file for 8-bit Assembler and Simulator
+
+This is the source for my 8-bit Assembler and Simulator. Currently, only
+the 6502 and the Intel MC-51 family are supported currenly. The 6502
+is alpha, but the MC-51 backend will be actively worked on.
+
+The source will work for gnu tools (gcc, gmake, etc), but I have tried
+not to use features that are unique to the gnu tools. Similarly, the 
+library calls should be ANSI and POSIX standard, but your mileage may
+vary on a non Linux system.
+
+To build the tools, check out the source and at the root 
+type: make "CC=gcc -O"
+
+The processor specific assembler and simulator will be in the processor
+directories (asm51 will be intel8051 and sim6502 will be in m6502). Run
+asm -h to get help for the assembler or enter h as a command in the 
+simulator.
+
+Any bugs, patches or feature suggestions can be sent to me at
+jim@termanweb.net
