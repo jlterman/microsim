@@ -1,0 +1,33 @@
+#!/bin/sh
+
+cmd=build
+CC=cc
+os=`uname -o`
+MAKE=make
+
+case $os in
+    Cygwin) CC="gcc -mno-cygwin"; MAKE="$MAKE EXE=.exe";;
+    *Linux) CC=gcc ;;
+	 *) echo "Warning: $os not directly supported"
+esac
+
+while getopts cgbtah opt ; do
+    case $opt in
+	c) cmd=clean ;;
+	g) debug=1 ;;
+	b) cmd=build ;;
+        t) test=1 ;;
+	a) cmd=all ;;
+	*) echo "build [-c] [-g] [-b] [-t] [-a] [-h]"; exit 1 ;;
+    esac
+done
+
+if [ $debug ] ; then CC="$CC -g" 
+		else CC="$CC -O" ; fi
+
+echo "Doing $MAKE CC=$CC $cmd for os: $os"
+
+$MAKE "CC=$CC" $cmd
+
+if [ $? -ne 0 ] ; then echo "Make failed"
+		  else choe "Make okay"
