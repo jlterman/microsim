@@ -509,6 +509,37 @@ int *getMemory(int addr, char m)
   return mptr;
 }
 
+/* Dump all the memory in hex text format to file. 
+ * Should be able to restart simulator with this file
+ */
+void dumpMemory(FILE* fd)
+{
+  int i, j;
+
+  fprintf(fd, "PC: %04X", pc);
+  for (i=0; i<8; ++i)
+    {
+      fprintf(fd, "\n%02X:", i*16);
+      for (j=0; j<16; ++j) fprintf(fd, " %02X", ram[i*16 + j]);
+    }
+  for (i=16; i<24; ++i)
+    {
+      fprintf(fd, "\n%02X:", (i - 8)*16);
+      for (j=0; j<16; ++j) fprintf(fd, " %02X", ram[i*16 + j]);
+    }
+  for (i=8; i<16; ++i)
+    {
+      fprintf(fd, "\nSF%02X:", i*16);
+      for (j=0; j<16; ++j) fprintf(fd, " %02X", ram[i*16 + j]);
+    }
+  for (i=0; i<4096; ++i)
+    {
+      fprintf(fd, "\n%04X:", i*16);
+      for (j=0; j<16; ++j) fprintf(fd, " %02X", xram[i*16 + j]);
+    }
+  fprintf(fd, "\n");
+}
+
 /***************************************
  * 
  * Complete list of 8051 instructions

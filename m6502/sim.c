@@ -466,3 +466,24 @@ int *getMemory(int addr, char m)
   return memory + addr;
 }
 
+
+/* Dump all the memory in hex text format to file. 
+ * Should be able to restart simulator with this file
+ */
+void dumpMemory(FILE* fd)
+{
+  int i, j;
+
+  fprintf(fd, " A: %02X\n", acc);
+  fprintf(fd, " X: %02X\n", xreg);
+  fprintf(fd, " Y: %02X\n", yreg);
+  fprintf(fd, "SP: %02X\n", sptr);
+  fprintf(fd, "PS: %02X\n", psr);
+  fprintf(fd, "PC: %04X", pc);
+  for (i=0; i<4096; ++i)
+    {
+      fprintf(fd, "\n%04X:", i*16);
+      for (j=0; j<16; ++j) fprintf(fd, " %02X", memory[i*16 + j]);
+    }
+  fprintf(fd, "\n");
+}

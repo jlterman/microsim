@@ -994,10 +994,15 @@ static FILE *safeOpen(char* filename, char* mode)
  */
 static void printSimHelp(void)
 {
-  printf("sim [-q] file.asm\n");
-  printf("    -q -- don't print out version info on startup\n");
-  printf("sim -h -- print this message\n");
-  printf("sim -V -- print simulator version and build date\n");
+  printf("sim [-q] file.asm\n"
+	 "Load the file.asm assembly file and begin simmulating it.\n"
+	 "Type 'h' for help inside the simulator\n\n"
+	 "    -h    print this message and exit\n"
+	 "    -V    print simulator version and exit\n"
+	 "    -q    don't print out version info on startup\n"
+	 " --asm    Run this program as an assembler. Run 'sim --asm -h' for details\n"
+	 "\nProject homepage: http://microsim.sourceforge.net\n"
+	 "Send bug reports to jim@termanweb.net\n");
   exit(1);
 }
 
@@ -1025,18 +1030,16 @@ static void loadFile(char *filename)
  */
 static char *getTmpFile(char *temp)
 {
-  char *tmpdir, sep, *tmpname = NULL;
+  char *tmpdir, *tmpname = NULL;
 
 #ifdef __WIN32__
-  sep = '\\';
   (tmpdir = getenv("TMP")) || (tmpdir = getenv("TEMP")) || 
     (tmpdir = getenv("TMPDIR")) || (tmpdir = ".");
 #else
-  sep = '/';
   (tmpdir = getenv("TMPDIR")) || (tmpdir = P_tmpdir) || (tmpdir = ".");
 #endif
   safeMalloc(tmpname, char, strlen(tmpdir) + 1 + strlen(temp) + 6 + 1);
-  sprintf(tmpname, "%s%c%sXXXXXX", tmpdir, sep, temp);
+  sprintf(tmpname, "%s%c%sXXXXXX", tmpdir, DIRSEP, temp);
   return tmpname;
 }
 
@@ -1087,17 +1090,47 @@ static void removeAllTmp()
     }
 }
 
+
+/* will replace the suffix ".xxx" in string oldname with the 
+ * new suffix in newsuffix
+ */
+static char *newSuffix(char *oldname, char *newsuffix)
+{
+  char* newstr = NULL;
+
+  int c = strrchr(oldname, '.') - oldname;
+  if (!c) c = strlen(oldname);
+
+  safeMalloc(newstr, char, c + 2 + strlen(newsuffix));
+  strncpy(newstr, oldname, c + 1); newstr[c + 1] = '\0';
+  strcpy(newstr + c +1, newsuffix);
+  newstr[c] = '.';
+  return newstr;
+}
+
 /* my signal handler. If cntrl-c trapped and simultion running
- * throw an error. Otherwise, exit the program gracefully.
+ * dump out memory to core file. Otherwise, exit the program gracefully.
  */
 void myhandler(int signum)
 {
-  if (signum == SIGINT && run_sim) 
+  char *core;
+  FILE *fd;
+
+  if (signum != SIGINT && signum != SIGABRT) 
     {
-      signal(SIGINT, myhandler); /* in case of sysV behavior */
-      longjmp(err, run_intr);
+      fprintf(stderr, "A fatal error has occured\n");
     }
-  if (signum != SIGABRT) fprintf(stderr, "A fatal error has occured\n");
+  if (!run_sim)
+    {
+      fprintf(stderr, "Assember was interrupted\n");
+    }
+  else
+    {
+      core = newSuffix(filename, "core");
+      fd = safeOpen(core, "w");
+      dumpMemory(fd);
+      fprintf(stderr, "Simulator was interrupted. Memory dumped to %s\n", core);
+    }
   exit(1);
 }
 
@@ -1200,29 +1233,22 @@ int main_sim(int argc, char *argv[])
   return 0;
 }
 
-
-/* will replace the suffix ".xxx" in string oldname with the 
- * new suffix in newsuffix
- */
-static char *newSuffix(char *oldname, char *newsuffix)
-{
-  char* newstr = NULL;
-
-  int c = strrchr(oldname, '.') - oldname;
-  if (!c) c = strlen(oldname);
-
-  safeMalloc(newstr, char, c + 2 + strlen(newsuffix));
-  strncpy(newstr, oldname, c + 1); newstr[c + 1] = '\0';
-  strcpy(newstr + c +1, newsuffix);
-  newstr[c] = '.';
-  return newstr;
-}
-
 /* print command line option for assembler
  */
 static void printAsmHelp(void)
 {
-  printf("asm [-vVqLl] [-o file.obj] file1 file2 ...\n");
+  printf("asm [-vqlL] [-o file.obj] file1.asm [[-o file2.obj] file2.asm] ...\n"
+	 "Assemble the file(s) file1.asm file2.asm ..., writing\n"
+	 "the object code to the file(s) file1.obj file2.obj ...\n\n");
+  printf("    -V   print version and exit\n"
+	 "    -h   print this message and exit\n"
+	 "    -v   run in verbose mode\n"
+	 "    -q   run in quiet mode - no output to stdout\n"
+	 "    -l   save assembly listing output to file.lst\n"
+	 "    -L   print assembly listing to stdout\n"
+	 "    -o   Set the filename of the object file of the next assembly file\n"
+	 "\nProject homepage: http://microsim.sourceforge.net\n"
+	 "Send bug reports to jim@termanweb.net\n");
   exit(1);
 }
 
@@ -1274,6 +1300,11 @@ int main_asm(int argc, char *argv[])
 
   for (c = optind; c<argc; ++c)
     {
+      if (!strcmp("-o", argv[c]))
+	{
+	  objFile = argv[c];
+	  continue;
+	}
       filename = argv[c];
       loadFile(filename);
       if (lstFlag) lstFile = newSuffix(filename, "lst");
@@ -1318,6 +1349,7 @@ int main_asm(int argc, char *argv[])
 	  if (lst) printf("List output written to file %s\n", lstFile);
 	}
       if (numErr>0) return numErr;
+      objFile = 0;
     }
   return 0;
 }
@@ -1326,35 +1358,43 @@ int main_asm(int argc, char *argv[])
  */
 int main(int argc, char *argv[])
 {
-  atexit(removeAllTmp);
+  char *arg0;
 
-#ifndef __WIN32__
-  signal(SIGHUP, myhandler);
-  signal(SIGQUIT, myhandler);
-  signal(SIGKILL, myhandler);
-  signal(SIGPIPE, myhandler);
-  signal(SIGALRM, myhandler);
-#endif
+#ifdef __WIN32__
   signal(SIGINT, myhandler);
   signal(SIGILL, myhandler);
   signal(SIGABRT, myhandler);
   signal(SIGFPE, myhandler);
   signal(SIGSEGV, myhandler);
   signal(SIGTERM, myhandler);
-
-  /* Find program name. If sim run as simulator, asm as assembler
-   */
-#ifdef __WIN32__
-  if (!strcmp("sim.exe", argv[0] + strlen(argv[0]) - 7)) 
-    return main_sim(argc, argv);
-  else if (!strcmp("asm.exe", argv[0] + strlen(argv[0]) - 7)) 
-    return main_asm(argc, argv);
 #else
-  if (!strcmp("sim", argv[0] + strlen(argv[0]) - 3)) 
-    return main_sim(argc, argv);
-  else if (!strcmp("asm", argv[0] + strlen(argv[0]) - 3)) 
-    return main_asm(argc, argv);
+  struct sigaction sa;
+
+  sa.sa_handler = myhandler;
+  sigemptyset(&sa.sa_mask);
+  sa.sa_flags = SA_RESTART;
+
+  sigaction(SIGINT, &sa, NULL);
+  sigaction(SIGILL, &sa, NULL);
+  sigaction(SIGABRT, &sa, NULL);
+  sigaction(SIGFPE, &sa, NULL);
+  sigaction(SIGSEGV, &sa, NULL);
+  sigaction(SIGTERM, &sa, NULL);
+  sigaction(SIGHUP, &sa, NULL);
+  sigaction(SIGQUIT, &sa, NULL);
+  sigaction(SIGPIPE, &sa, NULL);
+  sigaction(SIGALRM, &sa, NULL);
 #endif
-  printf("Unknown program name - %s\n", argv[0]);
-  exit(1);
+
+  atexit(removeAllTmp);
+  /* Look for --asm option to run as assembler. Run sim as default
+   */
+  if (!strcmp("--asm", argv[1])) return main_asm(argc - 1, argv + 1);
+
+  /* Find program name in argv[0]. If first 3 chars of name after directory seperator 
+   * is asm, run as assembler. Run sim for any other name
+   */
+  arg0 = strrchr(argv[0], DIRSEP);
+  arg0 = (arg0) ? arg0 + 1 : argv[0];
+  return (strncmp("asm", arg0, 3)) ? main_sim(argc, argv) : main_asm(argc, argv);
 }
