@@ -1,7 +1,7 @@
 CFLAGS=-Wall -pedantic -c -I ./ -I ./include
-export ASM_OBJS=expr.o front.o back.o
-export SIM_OBJS=sim_run.o
-export OBJS=main.o main_sim.o $(ASM_OBJS) $(SIM_OBJS)
+TARGS=$(addsuffix .trg, $(dir $(wildcard */Makefile)))
+TRGCMD=all
+export OBJS=main.o expr.o front.o back.o sim_run.o
 
 version.h: sim_vers asm_vers *.c
 	echo \#define ASM_VERS \"version `cat asm_vers`\" > $@
@@ -9,19 +9,11 @@ version.h: sim_vers asm_vers *.c
 	echo \#define BUILD_DATE \"`date "+%B %d, %Y %k:%M:%S"`\" >> $@
 	\rm -f main*.o
 
-mc51:
-	cd intel8051; $(MAKE) all 
+%.trg:
+	$(MAKE) -C $* $(TRGCMD)
 
-mc51_clean:
-	cd intel8051; $(MAKE) clean
+all:	version.h $(OBJS) $(TARGS)
 
-mot6502:
-	cd m6502; $(MAKE) all
-
-mot6502_clean:
-	cd m6502; $(MAKE) clean
-
-all:	version.h $(OBJS) mc51 mot6502
-
-clean:  mc51_clean mot6502_clean
+clean:  
 	\rm -f version.h *.o
+	$(MAKE) $(TARGS) TRGCMD=clean

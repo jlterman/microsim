@@ -34,10 +34,7 @@
 #include "asmdefs.h"
 #include "asm.h"
 #include "err.h"
-
- /* array of cpu specific labels in asm.c
-  */
-extern const label_type def_labels[];
+#include "cpu.h"
 
 const str_storage exprErrMsg[LAST_EXPR_ERR] = 
   {
@@ -62,7 +59,7 @@ const int isLabel_table[ASCII_MAX] =
     0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
     0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, /*  !"#$%&'()*+,-./ */
     1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 0, 0, 0, 0, 0, 0, /* 0123456789:;<=>? */
-    0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, /* @ABCDEFGHIJKLMNO */
+    1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, /* @ABCDEFGHIJKLMNO */
     0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, /* PQRSTUVWXYZ[\]^_ */
     0, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, /* `abcdefghijklmno */
     1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 0, 0, 0, 0  /* pqrstuvwxyz{|}~  */
@@ -101,7 +98,7 @@ const int isOp_table[ASCII_MAX] =
   {
     0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
     0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
-    0, 1, 0, 0, 1, 1, 1, 0, 0, 0, 1, 1, 0, 1, 0, 1, /*  !"#$%&'()*+,-./ */
+    0, 1, 0, 0, 0, 1, 1, 0, 0, 0, 0, 1, 0, 1, 0, 1, /*  !"#$%&'()*+,-./ */
     0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 1, 0, 0, /* 0123456789:;<=>? */
     0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, /* @ABCDEFGHIJKLMNO */
     0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, /* PQRSTUVWXYZ[\]^_ */
@@ -123,10 +120,27 @@ const int isExpr_table[ASCII_MAX] =
     1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 0, 1, 0, 0  /* pqrstuvwxyz{|}~  */
  };
 
-label_type *labels = NULL;        /* array of defined labels front.c can see */
-static int num_labels;            /* number of defined labels                */
-static int size_labels;           /* size of label buffer                    */
-static int *sort_labels = NULL;   /* array of sorted labels                  */
+label_type *labels = NULL;       /* array of defined labels front.c can see */
+static int *sort_labels = NULL;  /* array of sorted labels                  */
+static int num_labels = 0;       /* number of defined labels                */
+static jmp_buf *exprErr = &err;  /* ptr to global jmp_buf for error         */
+static jmp_buf *lastErr = NULL;  /* jmp_buf variable to be restored         */
+
+/* set jmp_buf variable for expr.c errors and save old value
+ */
+void setJmpBuf(jmp_buf* newErr)
+{
+  lastErr = exprErr;
+  exprErr = newErr;
+}
+
+/* restore old set jmp_buf variable for expr.c errors
+ */
+void restoreJmpBuf(void)
+{
+  if (lastErr) exprErr = lastErr; lastErr = NULL;
+}
+
 
 /* helper func for bsearch to search through arrays of token strings
  */
@@ -154,38 +168,52 @@ static int cmplabel(const void *e1, const void *e2)
   return strcmp(labels[*i1].name, labels[*i2].name);
 }
 
+/* handle any additions to label array. Keep sort_labels sorted.
+ */
+static int safeAddLabel(const char *name, int value)
+{
+  static int size_labels = 0;      /* size of label buffer     */
+  int oldnum = num_labels;
+
+  if (num_labels >= size_labels)
+    {
+      safeRealloc(labels, label_type, size_labels += CHUNK_SIZE);
+      safeRealloc(sort_labels, int, size_labels);
+    }
+  safeDupStr(labels[num_labels].name, name);
+  labels[num_labels].value = value;
+  sort_labels[num_labels] = num_labels;
+  num_labels++;
+  qsort(sort_labels, num_labels, sizeof(int), &cmplabel);
+  return oldnum;
+}
+
 /* if label name does not exists, create label and set its value.
- * if label name already exists change its value to value if overWrite is TRUE.
+ * if label name already exists change its value to value if value UNDEF
+ * or overWrite is TRUE.
  */
 int setLabel(str_storage name, int value, int overWrite)
 {
-  int *index;
-  int new_label = num_labels;
+  int *index, new_label;
   
   index = bsearch(name, sort_labels, num_labels, sizeof(int), &findlabel);
   if (!index)
-    {
-      if (num_labels == size_labels) 
-	{
-	  /* out of space, realloc more memory for labels
-	   */
-	  size_labels += CHUNK_SIZE;
-	  safeRealloc(labels, label_type, size_labels);
-	  safeRealloc(sort_labels, int, size_labels);
-	}
-      ++num_labels;
-      labels[new_label].name = strdup(name);    /* create new label */
-      sort_labels[new_label] = new_label;
-
-      qsort(sort_labels, num_labels, sizeof(int), &cmplabel);
-    }
-  else if (!overWrite) /* if overWrite false, don't update value of label */
-    return *index;
+    new_label = safeAddLabel(name, UNDEF);   /* create new label */
+  else if (!overWrite && labels[*index].value != UNDEF)
+    return *index;         /* don't assign label more than once  */
   else
-    new_label = sort_labels[index - sort_labels];
+    new_label = *index;
 
   labels[new_label].value = value; /* update value of label */
   return new_label;                /* return its locations in array labels */
+}
+
+/* return pointer to label if defined otherwise NULL
+ */
+label_type *getLabel(str_storage name)
+{
+  int *index = bsearch(name, sort_labels, num_labels, sizeof(int), &findlabel);
+  if (index) return labels + *index; else return NULL;
 }
 
 /* get value of label name. Causes fatal error if 
@@ -193,18 +221,15 @@ int setLabel(str_storage name, int value, int overWrite)
  */
 int getLabelValue(str_storage name)
 {
-  int *index, value;
+  label_type *label = getLabel(name);
 
-  index = bsearch(name, sort_labels, num_labels, sizeof(int), &findlabel);
-  if (index)
+  if (label)
     {
-      value = labels[*index].value;
-      if (value == UNDEF) longjmp(err, labval_undef);
-      return value;
+      if (label->value == UNDEF) longjmp(*exprErr, labval_undef);
+      return label->value;
     }
   else
-    longjmp(err, undef_label);
-
+    longjmp(*exprErr, undef_label);
 }
 
 /* print out all labels to file handler list
@@ -212,7 +237,7 @@ int getLabelValue(str_storage name)
 void printLabels(FILE* lst)
 {
   int i;
-  for (i=0; i<num_labels; ++i) 
+  for (i=10; i<num_labels; ++i) 
     {
       fprintf(lst, "%s = %d\n", labels[sort_labels[i]].name,
 	      labels[sort_labels[i]].value);
@@ -230,7 +255,7 @@ static int getNumBase(str_storage b, int base, char let)
   while (*b && *b != let)
     {
       digit = (isdigit(*b)) ? *b - '0' : *b - 'a' + 10;
-      if (digit>=base) longjmp(err, bad_number);
+      if (digit>=base) longjmp(*exprErr, bad_number);
 
       value = value*base + digit;
       ++b;
@@ -278,7 +303,7 @@ int getNumber(str_storage number)
  * (..) pairs are skipped over. Fatal error is generated if right par is not 
  * found
  */
-static int findClosePar(str_storage expr, int pos)
+int findClosePar(str_storage expr, int pos)
 {
   int level = 1;
   while (level && expr[++pos])   /* skip until back to level 0 */
@@ -292,7 +317,7 @@ static int findClosePar(str_storage expr, int pos)
 	  --level;
 	}
     }
-  if (level) longjmp(err, miss_par);
+  if (level) longjmp(*exprErr, miss_par);
   return pos;
 }
 
@@ -321,13 +346,9 @@ static int findOp(const char op, str_storage expr)
 	{
 	  return p;                  /* return pos of op */
 	}
-      else if (isOp(expr[p]))
-	{
-	  ++p;
-	}
       else
 	{
-	  longjmp(err, bad_expr);      /* unknown char */
+	  ++p;
 	}
     }
   return UNDEF;
@@ -375,14 +396,14 @@ int getExpr(char *expr)
     {
       /* error only occurs if there is an unmatched ')'
        */
-      longjmp(err, no_leftPar);
+      longjmp(*exprErr, no_leftPar);
     }
   else if ((pos = findBinaryOp(expr + start)) != UNDEF)
     {
       /* = char only found in == operator, can't be used alone
        */
       if (expr[start + pos] == '=' && expr[start + pos + 1] != '=') 
-	longjmp(err, no_eq);
+	longjmp(*exprErr, no_eq);
       
       /* OPerator was found: expr = exprLeft OP exprRight.  Get value of
        * exprLeft and exprRight by extracting substring and calling getExpr
@@ -407,7 +428,7 @@ int getExpr(char *expr)
 	case '|': value = lvalue | rvalue; break;
 	case '^': value = lvalue ^ rvalue; break;
 	case '/': 
-	  if (!rvalue) longjmp(err, zero_div);
+	  if (!rvalue) longjmp(*exprErr, zero_div);
 	  value = lvalue / rvalue;
 	  break;
 	case '%':
@@ -427,12 +448,12 @@ int getExpr(char *expr)
 	    case '!':  value = lvalue != rvalue; break;
 	    case '=':  value = lvalue == rvalue; break;
 	    default: 
-	      longjmp(err, no_op); /* unknown operator???? */
+	      longjmp(*exprErr, no_op); /* unknown operator???? */
 	      break;
 	}
 	  break;
 	default: 
-	  longjmp(err, no_op); /* unknown operator???? */
+	  longjmp(*exprErr, no_op); /* unknown operator???? */
 	  break;
 	}
       return value; /* no more processing needed */
@@ -451,13 +472,13 @@ int getExpr(char *expr)
 	}
       else if ((expr[start]=='$'|| expr[start]=='@'))
 	{
-	  if ((mem = getMemExpr(expr + start)))
-	    longjmp(err, (expr[start]) ? no_mem : bad_reg);
+	  if (!(mem = getMemExpr(expr + start)))
+	    longjmp(*exprErr, (expr[start]) ? no_mem : bad_reg);
 	  value = *mem;
 	}
       else
 	{
-	  longjmp(err, no_op); /* unknown opeator???? */
+	  longjmp(*exprErr, no_op); /* unknown opeator???? */
 	}
     }
   
@@ -470,7 +491,7 @@ int getExpr(char *expr)
 	case '!': value = !value; break;
 	case '~': value = ~value; break;
 	default: 
-	  longjmp(err, no_op); /* unknown opeator???? */
+	  longjmp(*exprErr, no_op); /* unknown opeator???? */
 	  break;
 	}
     }
@@ -483,20 +504,18 @@ int getExpr(char *expr)
 void initLabels(void)
 {
   int i;
+  char label[3] = "@0";
 
   if (labels) return;
-  safeMalloc(labels, label_type, CHUNK_SIZE);
-  safeMalloc(sort_labels, int, CHUNK_SIZE);
-  
-  i = 0;
-  while (def_labels[i].value != UNDEF)
+
+  for (i = 0; i<10; ++i)
     {
-      labels[i].name = strdup(def_labels[i].name);
-      labels[i].value = def_labels[i].value;
-      sort_labels[i] = i;
-      ++i;
+      label[1] = '0' + i;
+      safeAddLabel(label, UNDEF);
     }
-  num_labels = i;
-  size_labels = CHUNK_SIZE;
-  qsort(sort_labels, num_labels, sizeof(int), &cmplabel);
+  i = 0;
+  while (def_labels[i].value != UNDEF) 
+    {
+      safeAddLabel(def_labels[i].name, def_labels[i].value); ++i;
+    }
 }

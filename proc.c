@@ -40,7 +40,7 @@
  */
 void storeWord(int *addr, int value)
 {
-#if ENDIAN == BIG
+#if CPU_BIG_ENDIAN
   *addr = getHigh(value); ++addr;
   *addr =  getLow(value);
 #else

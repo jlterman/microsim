@@ -44,8 +44,6 @@
 #include "back.h"
 #include "cpu.h"
 
-extern label_type *labels;
-
 extern const str_storage cpuErrMsg[];
 static const str_storage asmErrMsg[LAST_ASM_ERR - LAST_EXPR_ERR] =
   {
@@ -53,19 +51,54 @@ static const str_storage asmErrMsg[LAST_ASM_ERR - LAST_EXPR_ERR] =
 
     "Illegal character encountered", 
     "Non-constant label for org directive",
-    "Can't use expression for org directive",
+    "Can't use expression with forward defined labels for org directive",
     "Missing colon at end of address label or unrecognized instruction",
     "Bad equ directive statement",
     "Bad db/dw directive statement",
     "Bad character constant",
+    "Bad address label",
+    "Bad temporary address label",
+    "Reference to undefined temporary address label",
+    "Cannot use equ to define label defined elsewhere",
 
     /* Back end error messages */
 
+    "Ambiguous instruction because of forward label definition",
     "Unrecognized instruction",
     "No such instruction",
-    "8-bit constant out of range", 
-    "8-bit address out of range",
-    "Relative jmp out of range"
+    "Relative jump out of range"
+    "1-bit data constant out of range", 
+    "2-bit data constant out of range", 
+    "3-bit data constant out of range", 
+    "4-bit data constant out of range", 
+    "5-bit data constant out of range", 
+    "6-bit data constant out of range", 
+    "7-bit data constant out of range", 
+    "8-bit data constant out of range", 
+    "9-bit data constant out of range", 
+    "10-bit data constant out of range", 
+    "11-bit data constant out of range", 
+    "12-bit data constant out of range", 
+    "13-bit data constant out of range", 
+    "14-bit data constant out of range", 
+    "15-bit data constant out of range", 
+    "16-bit data constant out of range", 
+    "1-bit address out of range", 
+    "2-bit address out of range", 
+    "3-bit address out of range", 
+    "4-bit address out of range", 
+    "5-bit address out of range", 
+    "6-bit address out of range", 
+    "7-bit address out of range", 
+    "8-bit address out of range", 
+    "9-bit address out of range", 
+    "10-bit address out of range", 
+    "11-bit address out of range", 
+    "12-bit address out of range", 
+    "13-bit address out of range", 
+    "14-bit address out of range", 
+    "15-bit address out of range", 
+    "16-bit address out of range", 
   };
 
 /* table of characters that have a special meaning
@@ -133,11 +166,11 @@ static int nextToken(str_storage buffer)
 
   if (!buffer[start]) return FALSE;
 
-   if (buffer[start]==',') 
+   if (buffer[start] == ',') 
      { 
-       pos = start+1; return comma;
+       pos = start + 1; return comma;
      }
-   if (buffer[start]=='\'') /* look for char constant */
+   if (buffer[start] == '\'') /* look for char constant */
      {
        index = 0;
        token[index++] = buffer[start++];
@@ -190,6 +223,14 @@ static int nextToken(str_storage buffer)
 	  return ret - asm_dirctv + 1;
 	}
       
+      if (token[0] == '@') /* look for temp label @n */
+	{
+	  if (isdigit(token[1]))
+	    return (buffer[end] == ':') ? tmpaddr_label : label;
+	  else
+	    longjmp(err, bad_tmplbl);
+	}
+
       if (isalpha(token[0]))     /* possible label */
 	{
 	  index = 0;
@@ -210,7 +251,7 @@ static int nextToken(str_storage buffer)
 		}
 	      else if (buffer[end]) /* label not followed by arith op */
 		{
-		  while (buffer[end + 1] && isspace(buffer[++end]));
+		  while (buffer[end] && isspace(buffer[end])) ++end;
 		  if (!isOp(buffer[end])) return label;
 		}
 	    }
@@ -220,8 +261,16 @@ static int nextToken(str_storage buffer)
   /* find expression substring. Add to substring as longs as 
    * legal expression char or embedded space
    */
-  end = start + 1;
-  while (buffer[end] && (isExpr(buffer[end]) || isspace(buffer[end]))) ++end;
+  end = start;
+  while (buffer[end] && (isExpr(buffer[end]) || isspace(buffer[end])))
+    {
+      if (buffer[end] == '(') 
+	end = findClosePar(buffer, end) + 1;
+      else if (isCharToken(buffer[end]))
+	break;
+      else
+	++end;
+    }
   
   d = 0;
   for (index=start; index<end; ++index)
@@ -287,8 +336,10 @@ static void newDataTkn(int *dataTkn, int *tkn, int data_token)
 void firstPass(str_storage buffer)
 {
   const int *theInstr;
-  int tkn_pos = 0;
-  int tkn[TKN_BUF] = { 0 };       /* tokenized buffer */
+  int tkn_pos = 0, tkn[TKN_BUF] = { 0 }; /* tokenized buffer */
+  int tkn_end, errNo;
+  jmp_buf exprErr;
+  label_type *l;
 
   static int size_buffer = 0;
   if (strlen(buffer)>size_buffer) 
@@ -307,73 +358,67 @@ void firstPass(str_storage buffer)
 	  if (!tkn[tkn_pos]) longjmp(err, bad_char);
 	  break;
 	case expr:
-	  tkn[++tkn_pos] = UNDEF; /* epxr had undefnd value for now */
+	  setJmpBuf(&exprErr);
+	  if ((errNo = setjmp(exprErr)) == 0)
+	    {
+	      /* Catch any errors from getExpr(token).
+	       * If error, leave expr token for undefined value
+	       */
+	      tkn[tkn_pos + 1] = getExpr(token);
+	      tkn[tkn_pos++] = number;
+	    }
+	  else
+	    tkn[++tkn_pos] = UNDEF;
+	  restoreJmpBuf();
 	  break;
 	case label:
 	  tkn[++tkn_pos] = setLabel(token, UNDEF, FALSE);
 	  break;
 	case addr_label: 
-	  setLabel(token, pc, TRUE); 
-	  --tkn_pos;
-	  break;
-	case equ:
-	  if (nextToken(buffer) == number)
-
-	    {
-	      /* if label equ number constant process right now
-	       * forward references to constant equ's allowed
-	       */
-	      tkn[++tkn_pos] = number;
-	      tkn[++tkn_pos] = getNumber(token);
-	    }
-	  else if (nextToken(buffer) == character)
-	    {
-	      tkn[++tkn_pos] = number;
-	      tkn[++tkn_pos] = token[1];
-	    }
-	  else
-	    continue; /* don't process equ expr's now */
+	  if ((l = getLabel(token)) && l->value != UNDEF) 
+	    longjmp(err, bad_addr);
+	case tmpaddr_label:
+	  tkn[++tkn_pos] = setLabel(token, pc, FALSE); 
 	  break;
 	}
       ++tkn_pos;
     }
   if (!tkn_pos) return;
   
-  tkn[tkn_pos] = 0;
-  switch (tkn[0])
+  tkn[tkn_pos] = 0; tkn_end = tkn_pos;
+  tkn_pos = 2*((tkn[0] == addr_label) || (tkn[0] == tmpaddr_label));
+  switch (tkn[tkn_pos])
     {
     case org:
-      if (tkn[1] == number)
-	pc = tkn[2];
-      else if (tkn[1] == label)
+      switch (tkn[tkn_pos + 1])
 	{
-	  pc = labels[tkn[1]].value;
-	  if (pc<0) longjmp(err, undef_org);
+	case number: pc = tkn[tkn_pos + 2]; break;
+	case label:  pc = labels[tkn[tkn_pos + 1]].value; break;
+	default:     longjmp(err, noexpr_org); break;
 	}
-      else
-	longjmp(err, noexpr_org);
+      if (pc<0) longjmp(err, undef_org);
+      if (tkn_pos && tkn[tkn_pos - 2] == addr_label)
+	labels[tkn[tkn_pos - 1]].value = pc;
       break;
     case label:
-      if (tkn[2] != equ) longjmp(err, miss_colon);
-      if (tkn[3] == number)
+      if (tkn[tkn_pos + 2] != equ) longjmp(err, miss_colon);
+      if (labels[tkn[tkn_pos + 1]].value != UNDEF) longjmp(err, illegal_equ);
+      switch (tkn[tkn_pos + 3])
 	{
-	  labels[tkn[1]].value = tkn[4];
+	case number: labels[tkn[tkn_pos + 1]].value = tkn[tkn_pos + 4]; break;
+	case label:  labels[tkn[tkn_pos + 1]].value = labels[tkn[tkn_pos + 4]].value; break;
+	case expr:   /* process expr in second pass */ break;
+	default:     longjmp(err, bad_expr); break;
 	}
-      else if (tkn[3] == label)
-	{
-	  labels[tkn[1]].value = labels[tkn[4]].value;
-	}
-      else if (tkn[3] != expr) /* only  number, label or expr after equ */
-	longjmp(err, bad_expr);
       break;
     case db:
-      pc += tkn_pos/2;
+      pc += tkn_end/2;
       break;
     case dw:
-      pc += tkn_pos;
+      pc += tkn_end - 1;
       break;
     default:
-      theInstr = findInstr(tkn);
+      theInstr = findInstr(tkn+tkn_pos);
       pc += theInstr[INSTR_TKN_BYTES]; /* track value of pc for addr labels */
       break;
     }
@@ -393,7 +438,7 @@ void secondPass(str_storage buffer)
   if (strlen(buffer)>size_buffer) 
     safeRealloc(token, char, size_buffer = strlen(buffer));
 
-  while (tkn_pos<TKN_BUF - 1 && (tkn[tkn_pos] = nextToken(buffer)) != UNDEF)
+  while (tkn_pos<TKN_BUF - 1 && (tkn[tkn_pos] = nextToken(buffer)))
     {
       switch (tkn[tkn_pos])
 	{
@@ -416,10 +461,14 @@ void secondPass(str_storage buffer)
 	      tkn[++tkn_pos] = getLabelValue(token);
 	    }
 	  else
-	    tkn[++tkn_pos] = setLabel(token, UNDEF, FALSE);
+	    {
+	      tkn[++tkn_pos] = setLabel(token, UNDEF, FALSE);
+	    }
 	  break;
+	case tmpaddr_label:
+	  setLabel(token, pc, TRUE); /* if tmp label, update value */
 	case addr_label:
-	  --tkn_pos;
+	  --tkn_pos;          /* ignore address labels in 2nd pass */
 	  break;
 	case equ:
 	  if (!nextToken(buffer)) longjmp(err, bad_equ);
@@ -429,38 +478,30 @@ void secondPass(str_storage buffer)
 	}
       ++tkn_pos;
     }
-  
-  if (tkn_pos)
+  if (!tkn_pos) return;
+
+  tkn[tkn_pos] = 0;
+  switch (tkn[0])
     {
-      tkn[tkn_pos] = 0;
-      switch (tkn[0])
-	{
-	case org:
-	  writeObj(pc, tkn[2]);
-	  pc = tkn[2]; oldPC = pc;
-	  break;
-	case label:
-	  if (tkn[2] == equ && tkn[3] == number  && !tkn[5]) 
-	    {
-	      labels[tkn[1]].value =  tkn[4];
-	    }
-	  else
-	    {
-	      longjmp(err, bad_equ);
-	    }
-	  break;
-	case db:
-	  newDataTkn(dataTkn, tkn, data_8);
-	  loadMemory(dataTkn, tkn);
-	  break;
-	case dw:
-	  newDataTkn(dataTkn, tkn, data_16);
-	  loadMemory(dataTkn, tkn);
-	  break;
-	default:
-	  loadMemory(findInstr(tkn), tkn);
-	  break;
-	}
+    case org:
+      writeObj(pc, tkn[2]);
+      pc = tkn[2]; oldPC = pc;
+      break;
+    case label:
+      if (tkn[2] != equ || tkn[3] != number || tkn[5] || tkn[1] < 10) longjmp(err, bad_equ);
+      labels[tkn[1]].value =  tkn[4];
+      break;
+    case db:
+      newDataTkn(dataTkn, tkn, data_8);
+      loadMemory(dataTkn, tkn);
+      break;
+    case dw:
+      newDataTkn(dataTkn, tkn, data_16);
+      loadMemory(dataTkn, tkn);
+      break;
+    default:
+      loadMemory(findInstr(tkn), tkn);
+      break;
     }
 }
 
@@ -497,7 +538,7 @@ int doPass(passFunc pass)
       while (isspace(buffer[s])) ++s;
       while (buffer[s] && buffer[s] != ';')
 	{
-	  if (isToken(work_buf[d - 1]) && buffer[s] && isToken(buffer[s])) work_buf[d++] = ' ';	  
+	  if (d && isToken(work_buf[d - 1]) && buffer[s] && isToken(buffer[s])) work_buf[d++] = ' ';	  
 	  while (buffer[s] && !isspace(buffer[s])) work_buf[d++] = tolower(buffer[s++]);
 	  while (isspace(buffer[s])) ++s;
 	}
