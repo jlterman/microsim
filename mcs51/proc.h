@@ -29,7 +29,7 @@
 
 /* TOKEN_LENGTH and TOKEN bit are used for binary search of this array.
  */
-#define TOKEN_LENGTH 68
+#define TOKEN_LENGTH 67
 #define TOKEN_BIT    6
 
 /* enum instr_tokens are the index values + 1 for the token array above plus
@@ -37,15 +37,15 @@
  */
 enum instr_tokens 
   { 
-    pound = 1, comma, dot, slash, a_dptr, a_pc, at_dptr, at_r0, 
-    at_r1, a, ab, acall, add, addc, ajmp, anl,
-    c, cjne, clr, cpl, da, db, dec, divab,
-    djnz, dptr, dw, inc, jb, jbc, jc, jmp,
-    jnb, jnc, jnz, jz, lcall, ljmp, mov, movc,
-    movx, mul, nop, orl, pop, push, r0, r1,
-    r2, r3, r4, r5, r6, r7, ret, reti,
-    rl, rlc, rr, rrc, setb, sjmp, subb, swap,
-    xch, xchd, xrl, aj_dup, ac_dup, rsrvd, last_tok, 
+    pound = 1, dot, slash, a_dptr, a_pc, at_dptr, at_r0, at_r1,
+    a, ab, acall, add, addc, ajmp, anl, c,
+    cjne, clr, cpl, da, dec, divab, djnz, dptr,
+    inc, jb, jbc, jc, jmp, jnb, jnc, jnz,
+    jz, lcall, ljmp, mov, movc, movx, mul, nop,
+    orl, pop, push, r0, r1, r2, r3, r4,
+    r5, r6, r7, ret, reti, rl, rlc, rr,
+    rrc, setb, sjmp, subb, swap, xch, xchd, xrl,
+    aj_dup, ac_dup, rsrvd, last_tok, 
     addr_11 = 768, bit_addr, bit_byte, bit_no
   };
 
