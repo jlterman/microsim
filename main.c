@@ -22,6 +22,7 @@
 #include <stdlib.h>
 #include <getopt.h>
 #include <string.h>
+#include "version.h"
 #include "asm.h"
 
 static FILE *bufd;                  /* file descripter of file being read for buffer */
@@ -113,7 +114,7 @@ static char *newSuffix(char *oldname, char *newsuffix)
 
 static void printHelp(void)
 {
-  printf("asm file.asm [-l] [-o file.obj]\n");
+  printf("asm file.asm [-v] [-l] [-o file.obj]\n");
   exit(1);
 }
 
@@ -126,9 +127,10 @@ int main(int argc, char *argv[])
   char *filename = argv[1];
   int numErr = 0;
   int batch = FALSE;
+  int version = FALSE;
   char temp[BUF_SIZE] = "asm51XXXXXX";
 
-  while ((c = getopt(argc-1, argv+1, "hlLo:")) != EOF)
+  while ((c = getopt(argc-1, argv+1, "vhlLo:")) != EOF)
     {
       switch (c)
 	{
@@ -140,6 +142,9 @@ int main(int argc, char *argv[])
 	  break;
 	case 'L':
 	  batch = TRUE;
+	  break;
+	case 'v':
+	  version = TRUE;
 	  break;
 	default:
 	  printHelp();
@@ -160,20 +165,21 @@ int main(int argc, char *argv[])
     }
 
   if (!objFile) objFile = newSuffix(filename, "obj");
-/*
+
+#ifdef __WIN32__
   mktemp(temp);
   obj = safeOpen(temp, "w");
-*/
+#else
   if ( (obj = fdopen(mkstemp(temp), "w") ) == NULL)
     { 
       fprintf(stderr, "Can't open tmp file!\n"); exit(1); 
     }
-  
+#endif
 
   if (!strcmp(filename, "-")) filename = "standard input";
-  printf("8051 Assembler written by Jim Terman. Copyright 2003.\n"
-	 "This program is distributed under the GNU Public License.\n\n"
-	 "Starting assembly of file %s\n", filename);
+  if (version) 
+    printf("%s\n%s\nThis program is distributed under the GNU Public License.\n\n", asm_version, cpu_version);
+  printf("Starting assembly of file %s\n", filename);
   
   numErr += doPass(&firstPass);
   if (!numErr && !batch) printf("First pass successfully completed.\n");
