@@ -28,6 +28,7 @@
 #include "front.h"
 #include "back.h"
 #include "proc.h"
+#include "version.h"
 
 /* The token array contains all the reserved words for 8051 assembly. 
  */
