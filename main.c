@@ -49,17 +49,79 @@ const char sim_version[] = "Assembler " ASM_VERS ", Simulator " SIM_VERS
                          "\nBuild date: " BUILD_DATE 
                          "\nCopyright (c) James L. Terman 2003 - 2005\n";
 
-/* list of simulator command line errors
- */
-enum cmd_err
-  { 
-    miss_param = LAST_SIM_ERR, extra_param, out_range, bad_base, 
-    bad_op, no_brk, no_reg, no_dsp, dup_brk, no_irq, sim_addr, bad_param,
-    run_intr, no_cmd, LAST_CMD_ERR
-  };
-
-const str_storage cmdErrMsg[LAST_CMD_ERR - LAST_SIM_ERR] =
+const str_storage error_messages[LAST_ERR] =
   {
+    "no error found",
+    /* 
+     * expression error messages
+     */
+    "Undefined label",
+    "Label value undefined",
+    "Unrecognized character in number",
+    "Unrecognized character in expression",
+    "Divide by zero",
+    "Unrecognized operator",
+    "Missing closing paranthesis",
+    "Missing opening paranthesis",
+    "Assignment operator '=' not allowed",
+    "Unknown or illegal memory reference",
+    "Unknown or illegal register",
+    /* 
+     * assembler front end error messages
+     */
+    "Illegal character encountered", 
+    "Non-constant label for org directive",
+    "Can't use expression with forward defined labels for org directive",
+    "Missing colon at end of address label or unrecognized instruction",
+    "Bad equ directive statement",
+    "Bad db/dw directive statement",
+    "Bad character constant",
+    "Bad address label",
+    "Bad temporary address label",
+    "Reference to undefined temporary address label",
+    "Cannot use equ to define label defined elsewhere",
+    /* 
+     * assembler back end  error messages
+     */
+    "Ambiguous instruction because of forward label definition",
+    "Unrecognized instruction",
+    "No such instruction",
+    "Relative jump out of range",
+    "1-bit data constant out of range", 
+    "2-bit data constant out of range", 
+    "3-bit data constant out of range", 
+    "4-bit data constant out of range", 
+    "5-bit data constant out of range", 
+    "6-bit data constant out of range", 
+    "7-bit data constant out of range", 
+    "8-bit data constant out of range", 
+    "9-bit data constant out of range", 
+    "10-bit data constant out of range", 
+    "11-bit data constant out of range", 
+    "12-bit data constant out of range", 
+    "13-bit data constant out of range", 
+    "14-bit data constant out of range", 
+    "15-bit data constant out of range", 
+    "16-bit data constant out of range", 
+    "1-bit address out of range", 
+    "2-bit address out of range", 
+    "3-bit address out of range", 
+    "4-bit address out of range", 
+    "5-bit address out of range", 
+    "6-bit address out of range", 
+    "7-bit address out of range", 
+    "8-bit address out of range", 
+    "9-bit address out of range", 
+    "10-bit address out of range", 
+    "11-bit address out of range", 
+    "12-bit address out of range", 
+    "13-bit address out of range", 
+    "14-bit address out of range", 
+    "15-bit address out of range", 
+    "16-bit address out of range", 
+    /* 
+     * simulator command line error messages
+     */
     "Parameter missing from simulator command",
     "Extra parameter given to simulator command",
     "Parameter out of range",
@@ -73,7 +135,15 @@ const str_storage cmdErrMsg[LAST_CMD_ERR - LAST_SIM_ERR] =
     "illegal address, must be at start of instruction",
     "bad parameter",
     "cntrl-c interrupted simulation",
-    "unknown command"
+    "unknown command",
+    /* 
+     * simulator execution error messages
+     */
+    "Program counter has overflowed",
+    "Stack has overflowed",
+    "Stack has underflowed",
+    "Divide by zero exception",
+    "Non-existant opcode"
   };
 
 /* Line structure entry containing line and address of line
@@ -246,31 +316,26 @@ str_storage getBuffer(void)
 
 /* global function called by assembler when error is reported
  */
-static void fprintErr(FILE *fd, int errNo, int line, str_storage msg)
+static void fprintErr(FILE *fd, int errNo, int line)
 {
-  fprintf(fd, "%s:%d ****** Syntax error #%d: %s", filename, line, errNo, msg);
+  fprintf(fd, "%s:%d ****** Syntax error #%d: %s", filename, line, errNo, error_messages[errNo]);
   fprintf(fd, "\n%s\n", lines[line-1].line);
 }
 
 /* global function called by assembler when error is reported
  */
-void printErr(int errNo, int line, str_storage msg)
+void printErr(int errNo, int line)
 {
-  fprintErr(stderr, errNo, line, msg);
-  if (lst && lst!=stdout) fprintErr(lst, errNo, line, msg);
+  fprintErr(stderr, errNo, line);
+  if (lst && lst!=stdout) fprintErr(lst, errNo, line);
 }
 
 /* simulator printErr message routine
  */
 static void printErrNo(int errNo)
 {
-  assert(errNo >= 0 && errNo< LAST_CMD_ERR);
-  if (errNo < LAST_EXPR_ERR)
-    printf("Syntax Error #%d: %s\n", errNo, exprErrMsg[errNo]);
-  else if (errNo < LAST_SIM_ERR)
-    printf("Syntax Error #%d: %s\n", errNo, simErrMsg[errNo - LAST_EXPR_ERR]);
-  else
-    printf("Syntax Error #%d: %s\n", errNo, cmdErrMsg[errNo - LAST_SIM_ERR]);
+  str_storage msg = (errNo < LAST_ERR) ? error_messages[errNo] :  proc_error_messages[errNo - LAST_ERR];
+  printf("Simulator Error #%d: %s\n", errNo, msg);
 }
 
 /* getNumParam() calls ongoing strtok call to get next number parameter
@@ -576,7 +641,7 @@ static void doMem(char c)
   do
     {
       if (value<SGN_BYTE_MIN || value>=BYTE_MAX)
-	printf("Warning: %s, masked to 8 bits\n", cmdErrMsg[out_range - LAST_SIM_ERR]);
+	printf("Warning: %s, masked to 8 bits\n", error_messages[out_range]);
       *mem = value & BYTE_MASK; /* if negative, mask out leads 1's */
       ++mem;
     }

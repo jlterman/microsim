@@ -36,21 +36,6 @@
 #include "err.h"
 #include "cpu.h"
 
-const str_storage exprErrMsg[LAST_EXPR_ERR] = 
-  {
-    "Undefined label",
-    "Label value undefined",
-    "Unrecognized character in number",
-    "Unrecognized character in expression",
-    "Divide by zero",
-    "Unrecognized operator",
-    "Missing closing paranthesis",
-    "Missing opening paranthesis",
-    "Assignment operator '=' not allowed",
-    "Unknown or illegal memory reference",
-    "Unknown or illegal register"
-  };
-
 /* legal characters for labels
  */
 const int isLabel_table[ASCII_MAX] =

@@ -26,11 +26,10 @@
 
 #define SIM_CPU_LOCAL
 
-#include "asmdefs.h"
-#include "asm.h"
-#include "front.h"
 #include "proc.h"
 #include "cpu.h"
+
+const str_storage proc_error_messages[] = { 0 };
 
 /* atRam will return the value of the memory location accessible by
  * the 8051 @Ri addressing mode. The upper 128 bytes of @Ri address
@@ -64,6 +63,7 @@
 static int ram[BYTE_MAX+BYTE_MAX/2] = { 0 }; /* internal ram */
 static int xram[MEMORY_MAX] = { 0 };         /* external RAM */
 static int *reg[8];                          /* address of data registers */
+static int stackBase = 7;                    /* base of stack */
 
 /* add 1 to stack pointer and store value at @Ri address
  */
@@ -89,7 +89,7 @@ void reset(void)
   for (i = 0; i<8; ++i) reg[i] = ram + i;
   ram[P0] = ram[P1] = ram[P2] = ram[P3] = BYTE_MASK;
   pc = RESET;
-  ram[SP] = 7;
+  stackBase = ram[SP] = 7;
   for (i = 0; i<128; ++i)
     {
       ram[i] = 0;
@@ -240,14 +240,14 @@ void step(void)
 {
   int x, y, *src = NULL, *dst = NULL, bsrc = UNDEF, bdst = UNDEF, addr = 0,
       op = memory[pc], opcode = cpu_instr_tkn[op][INSTR_TKN_INSTR],
-      *code = memory + pc + 1;
+      *code = memory + pc + 1, *tmp;
   const int *index = cpu_instr_tkn[op] + INSTR_TKN_PARAM;
   
   /* value of pc during instr execution is pc of next instr
    * return immediately if pc has overflowed (let sim register error)
    */
   pc += cpu_instr_tkn[memory[pc]][INSTR_TKN_BYTES];
-  if (pc>MEMORY_MAX) return;
+  if (pc>=MEMORY_MAX) { pc = 0; longjmp(err, pc_overflow); }
 
   /* Look for up to 3 parameters in opcdoe. getParam will 
    * return 0 if no more paramaters to be found.
@@ -352,14 +352,22 @@ void step(void)
       src = memory + addr;
     case movx: case mov: /* mov dst, src */
       if (op == 0x85)
-	*src = *dst;      /* for mov addr_8, addr_8 src & dst are reversed */
-      else if (bdst != UNDEF) /* mov dst.bdst, src.bsrc */
-	setBit(*src & bsrc, dst, bdst);
-      else 
 	{
-	  if (op == 0x90) ram[DPH] = *(src++); /* mov dptr, #data_16 */
-	  *dst = *src;
+	  tmp = src;
+	  src = dst;
+	  dst = tmp;	      /* for mov addr_8, addr_8 src & dst are reversed */
 	}
+      else if (op == 0x90)     /* mov dptr, #data_16 */
+	{
+	  ram[DPH] = *(src++);
+	}
+      else if (bdst != UNDEF) /* mov dst.bdst, src.bsrc */ 
+	{
+	  setBit(*src & bsrc, dst, bdst);
+	  break;
+	}
+      *dst = *src;
+      if (dst == ram + SP) stackBase = *src; /* if set stackpointer save for underflow check */
       break;
     case mul: /* mul ab */
       x = ram[ACC] * (ram[B]);
@@ -432,6 +440,7 @@ void step(void)
       break;
     }
   updatePSW();
+  if (ram[SP]<stackBase) longjmp(err, stack_underflow);
 }
 
 /* getRegister will return the address to the name of the register given it

@@ -45,27 +45,5 @@ enum const_tokens
     PROC_TOKEN
   };
 
-enum asm_err 
-  {
-    /* front end errors */
-
-    no_char = LAST_EXPR_ERR, undef_org, noexpr_org, miss_colon, 
-    bad_equ, bad_db, bad_char, bad_addr, bad_tmplbl, undef_tmplbl,
-    illegal_equ,
-
-    /* Back End Error messages */
-
-    dup_instr, bad_instr, no_instr, rel_range, 
-    data1_range, data2_range, data3_range, data4_range, 
-    data5_range, data6_range, data7_range, data8_range,
-    data9_range,  data10_range, data11_range, data12_range,
-    data13_range, data14_range, data15_range, data16_range,
-    addr1_range, addr2_range, addr3_range, addr4_range, 
-    addr5_range, addr6_range, addr7_range, addr8_range,
-    addr9_range,  addr10_range, addr11_range, addr12_range,
-    addr13_range, addr14_range, addr15_range, addr16_range,
-    LAST_ASM_ERR
-  };
-
 extern FILE *lst; /* File descriptor of assembly list file */
 #endif

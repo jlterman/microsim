@@ -22,6 +22,9 @@
 #define _CPU_HEADER
 
 #include "asmdefs.h"
+#include "err.h"
+#include "asm.h"
+#include "front.h"
 
 /* The following file defines the processor specific functions that must be
  * defined in the processor specific directory. CPU_LOCAL functions are 

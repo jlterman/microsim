@@ -43,12 +43,6 @@ static int size_brk = 0;
 
 int run_sim = FALSE;         /* true when simulator is running */
 
-const str_storage simErrMsg[LAST_SIM_ERR - LAST_EXPR_ERR] = 
-  {
-    "Program counter has overflowed",
-    "Bad address parameter"
-  };
-
 /* global function called from assembler for memory reference
  * Evalues memory location expression $addr[:c]
  */
@@ -146,7 +140,6 @@ void stepOne(void)
   int oldPC = pc, brk = -memory[pc] - 1;
   if (brk>=0) memory[pc] = brk_table[brk].op;
   step();
-  if (pc>=MEMORY_MAX) longjmp(err, bad_pc);
   if (brk>=0) memory[oldPC] = -brk - 1;
 }
 
@@ -158,8 +151,12 @@ int run(int addr, int trace)
   char *expr;
   int brk, brkFnd;
   if (addr == UNDEF) longjmp(err, bad_addr);
-  if (pc >= MEMORY_MAX || pc<0) longjmp(err, bad_pc);
 
+  if (!brk_table)
+    {
+      safeAddArray(brk_struct, brk_table, num_brk, size_brk);
+      brk_table[0].used = 0; brk_table[0].expr = 0;
+    }
   for (brk = 0; brk < num_brk; ++brk)
     {
       if (brk_table[brk].used)

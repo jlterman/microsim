@@ -67,6 +67,7 @@ typedef const char* str_storage;
 #define HI_NYBLE 0xF0
 #define LO_NYBLE 0x0F
 
+
 /* UNDEF is used when 0 is a legal value for a function return
  */
 #define UNDEF -65536

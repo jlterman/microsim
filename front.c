@@ -44,63 +44,6 @@
 #include "back.h"
 #include "cpu.h"
 
-extern const str_storage cpuErrMsg[];
-static const str_storage asmErrMsg[LAST_ASM_ERR - LAST_EXPR_ERR] =
-  {
-    /* front end error messages */
-
-    "Illegal character encountered", 
-    "Non-constant label for org directive",
-    "Can't use expression with forward defined labels for org directive",
-    "Missing colon at end of address label or unrecognized instruction",
-    "Bad equ directive statement",
-    "Bad db/dw directive statement",
-    "Bad character constant",
-    "Bad address label",
-    "Bad temporary address label",
-    "Reference to undefined temporary address label",
-    "Cannot use equ to define label defined elsewhere",
-
-    /* Back end error messages */
-
-    "Ambiguous instruction because of forward label definition",
-    "Unrecognized instruction",
-    "No such instruction",
-    "Relative jump out of range"
-    "1-bit data constant out of range", 
-    "2-bit data constant out of range", 
-    "3-bit data constant out of range", 
-    "4-bit data constant out of range", 
-    "5-bit data constant out of range", 
-    "6-bit data constant out of range", 
-    "7-bit data constant out of range", 
-    "8-bit data constant out of range", 
-    "9-bit data constant out of range", 
-    "10-bit data constant out of range", 
-    "11-bit data constant out of range", 
-    "12-bit data constant out of range", 
-    "13-bit data constant out of range", 
-    "14-bit data constant out of range", 
-    "15-bit data constant out of range", 
-    "16-bit data constant out of range", 
-    "1-bit address out of range", 
-    "2-bit address out of range", 
-    "3-bit address out of range", 
-    "4-bit address out of range", 
-    "5-bit address out of range", 
-    "6-bit address out of range", 
-    "7-bit address out of range", 
-    "8-bit address out of range", 
-    "9-bit address out of range", 
-    "10-bit address out of range", 
-    "11-bit address out of range", 
-    "12-bit address out of range", 
-    "13-bit address out of range", 
-    "14-bit address out of range", 
-    "15-bit address out of range", 
-    "16-bit address out of range", 
-  };
-
 /* table of characters that have a special meaning
  * when slashed for character constants.
  */
@@ -539,12 +482,7 @@ int doPass(passFunc pass)
 	    {
 	      ++numErr;
 	      assert(errNo >= 0);
-	      if (errNo < LAST_EXPR_ERR)
-		printErr(errNo, line, exprErrMsg[errNo]);
-	      else if (errNo < LAST_ASM_ERR)
-		printErr(errNo, line, asmErrMsg[errNo - LAST_EXPR_ERR]);
-	      else
-		printErr(errNo, line, cpuErrMsg[errNo - LAST_ASM_ERR]);
+	      printErr(errNo, line);
 	      continue;
 	    }
 	  pass(work_buf);

@@ -25,12 +25,10 @@
 
 #define SIM_CPU_LOCAL
 
-#include "asmdefs.h"
-#include "err.h"
-#include "asm.h"
-#include "front.h"
 #include "proc.h"
 #include "cpu.h"
+
+const str_storage proc_error_messages[] = { 0 };
 
 /* defintions for P status register */
 
@@ -233,7 +231,7 @@ void step(void)
    * return immediately if pc has overflowed (let sim register error)
    */  
   pc += cpu_instr_tkn[memory[pc]][INSTR_TKN_BYTES];
-  if (pc>MEMORY_MAX) return;
+  if (pc>=MEMORY_MAX) { pc = 0; longjmp(err, pc_overflow); }
 
   /* evaluate op parameters and return pointer to its value
    */
@@ -434,6 +432,7 @@ void step(void)
       assert(TRUE);
       break;
     }
+  return;
 }
 
 /* getRegister will return the address to the name of the register given it

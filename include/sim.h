@@ -32,11 +32,6 @@ typedef struct
   char *expr; /* if not NULL, break only if expr evaluates non-zero */
 } brk_struct;
 
-enum sim_err 
-  {
-    bad_pc = LAST_EXPR_ERR, bad_addr, LAST_SIM_ERR
-  };
-
 #ifndef SIM_LOCAL
 extern const str_storage simErrMsg[];
 #endif

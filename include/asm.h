@@ -60,7 +60,7 @@ str_storage getBuffer(void);
 #ifndef MAIN_LOCAL
 extern
 #endif
-void printErr(int, int, str_storage);
+void printErr(int, int);
 
 /* function called by assembler to try to handle memory reference
  * If returns UNDEF, will generate error message
