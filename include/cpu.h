@@ -1,7 +1,7 @@
 /*************************************************************************************
 
-    Copyright (c) 2003 by Jim Terman
-    This file is part of the 8051 Assembler
+    Copyright (c) 2003, 2004 by James L. Terman
+    This file is part of the Assembler
 
     This program is free software; you can redistribute it and/or modify
     it under the terms of the GNU General Public License as published by
@@ -63,7 +63,7 @@ int isJSR(int);
 
 /*
  *
- *  8051 Processor simulator Definitions
+ *  Processor specific simulator Definitions
  *
  */
 #ifndef SIM_CPU_LOCAL

@@ -1,7 +1,7 @@
 /*************************************************************************************
 
-    Copyright (c) 2003 by Jim Terman
-    This file is part of the 6502 Assembler
+    Copyright (c) 2003, 2004 by James L. Terman
+    This file is part of the 6502 Assembler backend
 
     This program is free software; you can redistribute it and/or modify
     it under the terms of the GNU General Public License as published by
@@ -29,7 +29,7 @@
 #include "front.h"
 #include "cpu.h"
 #include "proc.h"
-#include "version.h"
+#include "version_6502.h"
 
 const char cpu_version[] = "6502 backend " CPU_VERS;
 
@@ -386,8 +386,8 @@ const label_type def_labels[] = {
  */
 const str_storage cpuErrMsg[] =  { "" };
 
-/* The function isInstr distinguishes tokens that represent 8051 instructions
- * and those that are tokens for the parameters of 8051 instructions.
+/* The function isInstr distinguishes tokens that represent 6502 instructions
+ * and those that are tokens for the parameters of 6502 instructions.
  * includes psuedo-ops
  */
 int isInstrOp(int token)

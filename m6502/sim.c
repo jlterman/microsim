@@ -1,7 +1,7 @@
 /*************************************************************************************
 
     Copyright (c) 2003, 2004 by James L. Terman
-    This file is part of the 6502 simulator
+    This file is part of the 6502 simulator backend
 
     This program is free software; you can redistribute it and/or modify
     it under the terms of the GNU General Public License as published by

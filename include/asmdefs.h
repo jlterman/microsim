@@ -19,6 +19,9 @@
 
  *************************************************************************************/
 
+/* These are common defintions for the entire project
+ */
+
 #ifndef _ASM_DEFS
 #define _ASM_DEFS
 
