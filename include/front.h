@@ -18,17 +18,17 @@
     Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA  02111-1307  USA
 
  *************************************************************************************/
-#ifndef _FRONTEND
-#define _FRONTEND
+#ifndef _FRONT_HEADER
+#define _FRONT_HEADER
+
+#include "err.h"
 
 /* emum directv are tokens for assmembler psuedo directives 
  * handled by the front end. Note comma is defined here for db & dw.
  */
-#define DIRCTV_BASE 1024
-
 enum dirctv
   {
-    db = DIRCTV_BASE, dw, equ, org
+    db = 1, dw, equ, org, DIRCTV_END
   };
 
 /* enum const_tokens are tokens that represent different types of 
@@ -36,17 +36,23 @@ enum dirctv
  */
 enum const_tokens 
   {
-    comma = 511, const_tok, data_8, data_16, addr_8, addr_16, rel_addr,
-    number, character, expr, label, addr_label
+    comma = DIRCTV_END, CONST_TOKEN, 
+    data_8, data_16, addr_8, addr_16, rel_addr,
+    number, character, expr, label, addr_label, PROC_TOKEN
   };
 
-/* Undefined label value using guarenteed illegal value
- */
-#define UNDEF -MEMORY_MAX
+enum asm_err 
+  {
+    /* front end errors */
 
-#define SRCH_BIT_MAX 15
+    no_char = LAST_EXPR_ERR, undef_org, noexpr_org, miss_colon, 
+    bad_equ, bad_db, bad_char,
 
-#define LBL_BUF 1024
-#define LBL_MAX 2<<(SRCH_BIT_MAX + 1)
+    /* Back End Error messages */
 
+    bad_instr, no_instr, const_range, addr8_range, rel_range,
+    LAST_ASM_ERR
+  };
+
+extern FILE *lst; /* File descriptor of assembly list file */
 #endif

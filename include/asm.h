@@ -1,6 +1,6 @@
 /*************************************************************************************
 
-    Copyright (c) 2003 by Jim Terman
+    Copyright (c) 2003, 2004 by James L. Terman
     This file is part of the 8051 Assembler
 
     This program is free software; you can redistribute it and/or modify
@@ -27,93 +27,128 @@
  * call dopass(firstPass) and dopass(secondPass) to assemble file
  */
 
-#ifndef _ASM
-#define _ASM
+#ifndef _ASM_HEADER
+#define _ASM_HEADER
 
-#define TRUE 1
-#define FALSE 0
+/******************************************************************************
+ *
+ *    The following function are call back functions to be defined by the
+ *    file that is linked to the assembler
+ *
+ *****************************************************************************/
 
-#define MEMORY_MAX 65536
-#define BUF_SIZE 256
-
-#define ASCII_MAX 128
-#define BYTE_MAX 255
-#define SGN_BYTE_MAX 127
-#define SGN_BYTE_MIN -128
-
-typedef void (*passFunc)(const char*);
-
-#ifndef FRONTEND_LOCAL
-extern
-#endif
-void printLabels(FILE*);
-
-#ifdef FRONTEND_LOCAL
+/*  writeobj is given a range of program memory that has been assembled and
+ * is ready to be written to a file
+ */
+#ifndef MAIN_LOCAL
 extern
 #endif
 void writeObj(int, int);
 
-#ifdef FRONTEND_LOCAL
+/* Called by assembler to get next line of assembly. return NULL at EOF
+ */
+#ifndef MAIN_LOCAL
 extern
 #endif
-int getBuffer(void);
+str_storage getBuffer(void);
 
-#ifndef FRONTEND_LOCAL
+/* function called by assembler to report error found.
+ * Gives error number, line of file and appropiate error message
+ */
+#ifndef MAIN_LOCAL
 extern
 #endif
-int getLabelValue(const char*);
+void printErr(int, int, str_storage);
 
-#ifndef FRONTEND_LOCAL
+/* function called by assembler to try to handle memory reference
+ * If returns UNDEF, will generate error message
+ */
+#ifndef MAIN_LOCAL
 extern
 #endif
-void firstPass(const char*);
+int *getMemExpr(char*);
 
-#ifndef FRONTEND_LOCAL
-extern
-#endif
-void secondPass(const char*);
+/******************************************************************************
+ *
+ *    The following function are global functions of the assembler
+ *
+ *****************************************************************************/
 
-typedef const char* str_storage;
+/* typedef of assembler pass function
+ */
+typedef void (*passFunc)(str_storage);
  
+/* main entry point into assembler. Give pass function as assembler
+ */
 #ifndef FRONTEND_LOCAL
 extern
 #endif
 int doPass(passFunc);
 
-#define LBL_LEN_MAX 32
-
-typedef struct 
-{
-  char name[LBL_LEN_MAX+1];
-  int  value;
-  int  id;
-} label_type;   /* name, value pairs for labels */
-
-#ifndef FRONT_LOCAL
-extern int memory[MEMORY_MAX]; /* 64K of program memory */
-extern int pc;                 /* location of next instruction to be assembled */
-
-extern int silent;
-extern char *filename;
-extern FILE *lst;              /* list file descriptor, none if NULL */
-extern FILE *obj;              /* object file descriptor, none if NULL */
-
-extern label_type *labels;     /* array of defined labels */
-extern int num_labels;         /* number of defined labels */
-
-extern int *sort_labels;       /* array of sorted labels */
-extern int size_buf_labels;    /* size of label buffer */
+/* first pass of assember. No code is generated, but syntax is checked 
+ * and all labels will be defined at end of pass for second pass
+ */
+#ifndef FRONTEND_LOCAL
+extern
 #endif
+void firstPass(str_storage);
 
-#define safeMalloc(var, type, size) \
-  {  var = (type*) malloc(size*sizeof(type)); \
-     if (!var) { fprintf(stderr, "Out of memory!\n"); exit(1); } }
+/* With all labels defined by first pass, second pass will be able to 
+ * generate code. Range checking errors will be reported in this pass
+ */
+#ifndef FRONTEND_LOCAL
+extern
+#endif
+void secondPass(str_storage);
 
-#define safeRealloc(var, type, size) \
-  {  var = (type*) realloc(var, size*sizeof(type)); \
-     if (!var) { fprintf(stderr, "Out of memory!\n"); exit(1); } }
+/* will return value of expression passed to it consisting of operators, 
+ * numerical constants and label values
+ */
+#ifndef EXPR_LOCAL
+extern
+#endif
+int getExpr(char*);
+
+/* getNumber() will interpet the string given to it as a numerical constant
+ */
+#ifndef EXPR_LOCAL
+extern
+#endif
+int getNumber(str_storage);
+
+/* print name and value of all defined labels
+ */
+#ifndef EXPR_LOCAL
+extern
+#endif
+void printLabels(FILE*);
+
+/* get value of label name passed as parameter
+ */
+#ifndef EXPR_LOCAL
+extern
+#endif
+int getLabelValue(str_storage);
+
+/* if label name does not exists, create label and set its value.
+ */
+#ifndef EXPR_LOCAL
+extern
+#endif
+int setLabel(str_storage, int, int);
+
+/* initialize labels for assembler
+*/
+#ifndef EXPR_LOCAL
+extern
+#endif
+void initLabels(void);
+
+/* function useful for searching an array of sorted str's with bsearch
+ */
+#ifndef EXPR_LOCAL
+extern
+#endif
+int cmpstr(const void*, const void*);
 
 #endif
-
-#define getLow(x) (((unsigned) x) & 0xFF)
-#define getHigh(x) ((((unsigned) x)/0x100) & 0xFF)

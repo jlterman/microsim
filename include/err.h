@@ -18,24 +18,28 @@
     Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA  02111-1307  USA
 
  *************************************************************************************/
+#ifndef _ERR_HEADER
+#define _ERR_HEADER
 
-#ifndef ERR_LOCAL
-extern
-#endif
-void printErr(FILE*, const char*, int, int);
+#include <setjmp.h>
 
-#ifndef ERR_LOCAL
+#ifndef EXPR_LOCAL
 extern
 #endif
 jmp_buf err;                    /* used for error handling */
 
-#ifdef ERR_LOCAL
-extern char *buffer;
-extern const str_storage frontErrMsg[];
-extern const str_storage  backErrMsg[];
-extern const str_storage  procErrMsg[];
+/* expression error codes. These error may happen anywhere and are global
+ */
+enum expr_err
+  {
+    undef_label, labval_undef, bad_number, bad_expr, zero_div, 
+    no_op, miss_par, no_leftPar, no_eq, no_mem, bad_reg, LAST_EXPR_ERR
+  };
+
+#ifndef EXPR_LOCAL
+extern const str_storage exprErrMsg[];
 #endif
 
-#define FRONTERR 0
-#define BACKERR  256
-#define CPUERR   512
+#define getExprErrMsg(x) (((x) < LAST_EXPR_ERR && (x) >= 0) ? exprErrMsg[x] : NULL)
+
+#endif

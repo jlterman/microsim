@@ -18,16 +18,14 @@
     Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA  02111-1307  USA
 
  *************************************************************************************/
+#ifndef _BACK_HEADER
+#define _BACK_HEADER
 
-/* number of tokens needed to define cpu instr
+#include "asmdefs.h"
+
+/* the following functions are the global functions provided by back.c
+ * for the front end of the assembler
  */
-#define INSTR_TKN_BUF 16
-
-#define INSTR_TKN_OP 0
-#define INSTR_TKN_BYTES 1
-#define INSTR_TKN_CYCLES 2
-#define INSTR_TKN_INSTR 3
-
 #ifndef BACKEND_LOCAL
 extern
 #endif
@@ -41,26 +39,6 @@ void loadMemory(const int*, int*);
 #ifndef BACKEND_LOCAL
 extern
 #endif
-const char *getToken(int);
+void writeList(FILE*, int, int, str_storage);
 
-#ifndef BACKEND_LOCAL
-extern
-#endif
-void initLabels(void);
-
-#ifndef BACKEND_LOCAL
-extern
-#endif
-void writeList(int, int, char*);
-
-
-#ifndef CPU_LOCAL
-extern const int isCharToken_table[];     /* single char tokens defn'd by proc.h */
-extern const int isToken_table[];         /* legeal char tokens defn'd by proc.h */
-
-extern const str_storage tokens[];        /* list of legal tokens defn'd by proc.h */
-
-extern const int isInstr_table[];                /* array of real vs. psuedo instructions */
-extern const int cpu_instr_tkn[][INSTR_TKN_BUF]; /* array of cpu instructions */
-extern const label_type def_labels[];            /* array of predefined labels for the cpu */
 #endif
