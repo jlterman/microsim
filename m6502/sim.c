@@ -72,7 +72,7 @@ static int *instrReg_table[LAST_PROC_TOKEN - PROC_TOKEN] =
  */
 static void pushStack(int data)
 {
-  memory[STACK_BASE + sptr] = acc;
+  memory[STACK_BASE + sptr] = data;
   dec(sptr);
 }
 
@@ -90,7 +90,21 @@ void reset(void)
 {
   acc = xreg = yreg = psr = 0;
   sptr = BYTE_MAX - 1;
-  pc = memory[0xFFFC] + memory[0xFFFD]*BYTE_MAX;
+  pc = memory[RESET] + memory[RESET + 1]*BYTE_MAX;
+}
+
+int irq(int nmi)
+{
+  if (!nmi && psr & intr) return FALSE; /* check for maskable interrupt */
+  if (nmi < 0 || nmi > 1) return UNDEF;
+  pushStack(getHigh(pc));
+  pushStack(getLow(pc));
+  pushStack(p);
+  if (nmi)
+    pc = memory[NMI] + memory[NMI + 1]*BYTE_MAX;
+  else
+    pc = memory[IRQ] + memory[IRQ + 1]*BYTE_MAX;
+  return TRUE;
 }
 
 /* add value to acc with the proper setting of status registers.
@@ -129,14 +143,14 @@ static void doSub(int value)
       dlo = (acc & LO_NYBLE) - (value & LO_NYBLE) - !getC();
       dhi = (acc & HI_NYBLE) - (value & HI_NYBLE) - (dlo<0);
       if (dlo<0) dlo += 10;
-      setP(dhi >= 0, carry);
+      setP(dhi < 0, carry);
       if (dhi<0) dlo += 10;
       acc = dlo + 10*dhi;
     }
   else
     {
       acc -= value + !getC();
-      setP(acc >= 0, carry);
+      setP(acc < 0, carry);
       acc &= BYTE_MASK;
     }
   setP(acc & sign, sign);
@@ -148,23 +162,23 @@ static void doSub(int value)
  * the entry in cpu_instr_tkn. It returns a pointer to the 
  * parameter either in memory, or the register
  */
-static int *getParam(int op, int *index, int *codeptr)
+static int *getParam(int op, const int **index, int **code)
 {
-  int t, *addr = memory;
-
-  while ((t = cpu_instr_tkn[op][*index]))
+  int *ret, *addr = memory;
+  
+  while (**index)
     {
-      switch (t)
+      switch (**index)
 	{
 	case 0:
 	case rightPar:
 	  return addr;
 	  break;
 	case pound:
-	  ++(*index);
+	  ++*index;
 	case rel_addr:
 	case data_8:
-	  return codeptr; /* return pointer to code for value */
+	  return *code;   /* return pointer to code for value */
 	  break;
 	case comma:       /* skip */
 	  break;
@@ -178,11 +192,11 @@ static int *getParam(int op, int *index, int *codeptr)
 	  addr += yreg;   /* y reg param is always added to address */
 	  break;
 	case addr_16:     /* get 16 bit address from code */
-	  addr += *codeptr;          ++codeptr;
-	  addr += *codeptr*BYTE_MAX; ++codeptr;
+	  addr += **code;          ++*code;
+	  addr += **code*BYTE_MAX; ++*code;
 	  break;
 	case addr_8:      /* get 8 bit address from code */
-	  addr += *(codeptr++);
+	  addr += **code; ++*code;
 	  break;
 	case leftPar:
 	  /* Make recursive call to getParam to evaluate param 
@@ -191,15 +205,16 @@ static int *getParam(int op, int *index, int *codeptr)
 	   *
 	   * param value is 8-bit except for jmp (addr_16)
 	   */
-	  addr += *(getParam(op, index, codeptr));
+	  ret = getParam(op, index, code);
+	  addr += *ret;
 	  if (cpu_instr_tkn[op][INSTR_TKN_INSTR] == jmp)
-	    addr += *(getParam(op, index, codeptr) + 1);
+	    addr += *(ret + 1)*BYTE_MAX;
 	  break;
 	default:
 	  assert(TRUE);
 	  break;
 	}
-      ++(*index);
+      ++*index;
     }
   return addr;
 }
@@ -209,9 +224,10 @@ static int *getParam(int op, int *index, int *codeptr)
  */
 void step(void)
 {
-  int op = memory[pc], index = INSTR_TKN_PARAM, codeptr = pc + 1,
+  int op = memory[pc], *code = memory + pc + 1,
     opcode = cpu_instr_tkn[op][INSTR_TKN_INSTR], n, *param, 
-    *reg = instrReg_table[op];
+    *reg = instrReg_table[opcode - PROC_TOKEN];
+  const int *index = cpu_instr_tkn[op] + INSTR_TKN_PARAM;
 
   /* value of pc during instr execution is pc of next instr
    * return immediately if pc has overflowed (let sim register error)
@@ -221,7 +237,7 @@ void step(void)
 
   /* evaluate op parameters and return pointer to its value
    */
-  param = getParam(op, &index, &codeptr);
+  param = getParam(op, &index, &code);
   switch (opcode)
     {
     case adc: /* add memory location with carry to accumulator */
@@ -263,12 +279,13 @@ void step(void)
       if (!(psr & sign)) relJmp(pc, *param);
       break;
     case brk: /* force break */
+      if (psr & intr) return; /* don't break in middle of interrupt */
       setP(1, brk);
       pushStack(getHigh(pc));
       pushStack(getLow(pc));
       pushStack(p);
       setP(1, intr);
-      pc = memory[0xFFFE] + memory[0xFFFF]*BYTE_MAX;
+      pc = memory[IRQ] + memory[IRQ + 1]*BYTE_MAX;
       break;
     case bvc: /* branch if overflow clear */
       if (!(psr & ov)) relJmp(pc, *param);
@@ -291,9 +308,9 @@ void step(void)
     case cpx: /* compare memory and x register */ 
     case cpy: /* compare memory and y register */ 
       n = *reg - *param;
-      setP(n & BIT7_MASK, sign);
+      setP(n & 2*BIT7_MASK, sign);
       setP(!n, zero);
-      setP(n >= 0, carry);
+      setP(n < 0, carry);
       break;
     case dec: /* decrease memory location */
       reg = param;
@@ -372,7 +389,7 @@ void step(void)
     case rti:
       psr = popStack();
     case rts:
-      pc = popStack() + BYTE_MASK*popStack();
+      pc = popStack() + BYTE_MAX*popStack();
       break;
     case sbc: /* subtract memory location with borrow from accumulator */
       doSub(*param);
@@ -422,22 +439,22 @@ void step(void)
 /* getRegister will return the address to the name of the register given it
  * if *bit not UNDEF, register is one bit in length
  */
-int *getRegister(str_storage name, int *bit)
+int *getRegister(str_storage name, int *bit, int *bytes)
 {
   int index;
   const str_storage *ret = bsearch(name, tokens, tokens_length, sizeof(str_storage), &cmpstr);
   if (!ret) return NULL;
-  *bit = UNDEF;
+  *bit = UNDEF; *bytes = 1;
   index = ret - tokens + PROC_TOKEN;
   switch (index)
     {
-    case pc_reg: return &pc;   break;
+    case pc_reg: *bytes = 2;   return &pc; break;
     case a:      return &acc;  break;
     case x:      return &xreg; break;
     case y:      return &yreg; break;
     case sp:     return &sptr; break;
     case p:      return &psr;  break;
-    default: return NULL;      break;
+    default:     return NULL;  break;
     }
 }
 
@@ -445,7 +462,7 @@ int *getRegister(str_storage name, int *bit)
  */
 int *getMemory(int addr, char m)
 {
-  if (m == '\0' && m != 'c') return NULL;
+  if (m != '\0' && m != 'c') return NULL;
   if (addr>=MEMORY_MAX) return NULL;
   return memory + addr;
 }

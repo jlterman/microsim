@@ -1,31 +1,24 @@
 CFLAGS=-Wall -pedantic -c -I ./ -I ../include
 VPATH=../
-ASM6502_OBJS=asm.o proc.o
-SIM6502_OBJS=sim.o
+ASM_OBJS=asm.o proc.o sim.o
+export PROC=6502
 
-version_6502.h: cpu_vers $(addsuffix .c,$(basename $(ASM6502_OBJS) $(SIM6502_OBJS)))
+version_cpu.h: cpu_vers $(addsuffix .c,$(basename $(ASM_OBJS)))
 	echo \#define CPU_VERS \"version `cat cpu_vers`, build date\: `date "+%B %d, %Y %k:%M:%S"`\">$@; \rm -f asm.o
 
-asm6502: main.o $(ASM_OBJS) $(ASM6502_OBJS)
+asm: main.o $(ASM_OBJS) $(OBJS)
 	$(CC) $^ -o $@ ; $@ -V
 
-sim6502: main_sim.o $(SIM_OBJS) $(ASM_OBJS) $(ASM6502_OBJS) $(SIM6502_OBJS)
-	$(CC) $^ -o $@ ; $@ -V
+sim: asm
+	cp asm sim
 
 proc.o: proc.c
 	$(CC) $(CFLAGS) $^ -o proc.o
 
-reset_test:
-	\rm -f *.obj *.out
-
-%.obj: %.asm ;	../asm6502 $<
-
-%.out: %.obj;	@{ if diff $< $(<).ref ; then echo asm6502 succeeded; else echo asm6502 failed ; fi } > $@ ; cat $@
-
-test:	
-	@echo no test for 6502
-
 clean:
-	\rm -f *.o *.obj *.out version_6502.h asm6502 sim6502
+	\rm -f *.o version_cpu.h asm asm sim
+	$(MAKE) -C regtest clean
 
-all:	version_6502.h asm6502 sim6502 test
+all:	version_cpu.h asm sim
+	cd regtest; $(MAKE) all
+

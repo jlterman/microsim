@@ -29,7 +29,7 @@
  *
  */
 
-#define ENDIAN LITTLE
+#define CPU_BIG_ENDIAN FALSE
 
 /* enum instr_tokens are the index values + 1 for the token array above plus
  * extra tokens which describe the parameters of the 6502 instructions set.
@@ -46,6 +46,10 @@ enum instr_tokens
     sta, stx,  sty, tax, tay, tsx, txa, txs, 
     tya, x,    y,   LAST_PROC_TOKEN
   };
+
+ #define NMI   0xFFFA
+ #define RESET 0xFFFC
+ #define IRQ   0xFFFE
 
 #ifndef CPU_LOCAL
 extern const int isRegister_table[LAST_PROC_TOKEN - PROC_TOKEN];

@@ -29,7 +29,7 @@
 #include "front.h"
 #include "cpu.h"
 #include "proc.h"
-#include "version_6502.h"
+#include "version_cpu.h"
 
 const char cpu_version[] = "6502 backend " CPU_VERS;
 
@@ -67,6 +67,7 @@ const int isRegister_table[LAST_PROC_TOKEN - PROC_TOKEN] =
 
 /* Macro returns true when character is a 1 char token
  * Note: no intersection with isToken(x)
+ * Any char listed here cannot be used in an expression in a parameter
  */
 const int isCharToken_table[ASCII_MAX] =
   {
@@ -88,7 +89,7 @@ const int isToken_table[ASCII_MAX] =
     0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
     0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
     0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, /*  !"#$%&'()*+,-./ */
-    1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 0, 0, 0, 0, 0, /* 0123456789:;<=>? */
+    1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 0, 0, 0, 0, 0, 0, /* 0123456789:;<=>? */
     1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, /* @ABCDEFGHIJKLMNO */
     1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 0, 0, 0, 1, /* PQRSTUVWXYZ[\]^_ */
     0, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, /* `abcdefghijklmno */
@@ -277,16 +278,16 @@ const int cpu_instr_tkn[][INSTR_TKN_BUF] =
   { 0x9D, 3, 0, sta,   addr_16,  comma,    x,        0 },
   { 0x9E, 1, 0, NOP,   0 },
   { 0x9F, 1, 0, NOP,   0 },
-  { 0xA0, 2, 0, ldy,   data_8,   0 },
+  { 0xA0, 2, 0, ldy,   pound,    data_8,   0 },
   { 0xA1, 2, 0, lda,   leftPar,  addr_8,   comma,    x,       rightPar,  0 },
-  { 0xA2, 2, 0, ldx,   data_8,   0 },
+  { 0xA2, 2, 0, ldx,   pound,    data_8,   0 },
   { 0xA3, 1, 0, NOP,   0 },
-  { 0xA4, 2, 0, ldy,   addr_8,   0 },
+  { 0xA4, 2, 0, ldy,   pound,    addr_8,   0 },
   { 0xA5, 2, 0, lda,   addr_8,   0 },
   { 0xA6, 2, 0, ldx,   addr_8,   0 },
   { 0xA7, 1, 0, NOP,   0 },
   { 0xA8, 1, 0, tay,   0 },
-  { 0xA9, 2, 0, lda,   data_8,   0 },
+  { 0xA9, 2, 0, lda,   pound,    data_8,   0 },
   { 0xAA, 1, 0, tax,   0 },
   { 0xAB, 1, 0, NOP,   0 },
   { 0xAC, 3, 0, ldy,   addr_16,  0 },
@@ -309,7 +310,7 @@ const int cpu_instr_tkn[][INSTR_TKN_BUF] =
   { 0xBD, 3, 0, lda,   addr_16,  comma,    x,        0 },
   { 0xBE, 3, 0, ldx,   addr_16,  comma,    y,        0 },
   { 0xBF, 1, 0, NOP,   0 },
-  { 0xC0, 2, 0, cpy,   data_8,   0 },
+  { 0xC0, 2, 0, cpy,   pound,    data_8,   0 },
   { 0xC1, 2, 0, cmp,   leftPar,  addr_8,   comma,    x,       rightPar,  0 },
   { 0xC2, 1, 0, NOP,   0 },
   { 0xC3, 1, 0, NOP,   0 },
@@ -318,7 +319,7 @@ const int cpu_instr_tkn[][INSTR_TKN_BUF] =
   { 0xC6, 2, 0, dec,   addr_8,   0 },
   { 0xC7, 1, 0, NOP,   0 },
   { 0xC8, 1, 0, iny,   0 },
-  { 0xC9, 2, 0, cmp,   data_8,   0 },
+  { 0xC9, 2, 0, cmp,   pound,    data_8,   0 },
   { 0xCA, 1, 0, dex,   0 },
   { 0xCB, 1, 0, NOP,   0 },
   { 0xCC, 3, 0, cpy,   addr_16,  0 },
@@ -341,7 +342,7 @@ const int cpu_instr_tkn[][INSTR_TKN_BUF] =
   { 0xDD, 3, 0, cmp,   addr_16,  comma,    x,        0 },
   { 0xDE, 3, 0, dec,   addr_16,  comma,    x,        0 },
   { 0xDF, 1, 0, NOP,   0 },
-  { 0xE0, 2, 0, cpx,   data_8,   0 },
+  { 0xE0, 2, 0, cpx,   pound,    data_8,   0 },
   { 0xE1, 2, 0, sbc,   leftPar,  addr_8,   comma,    x,       rightPar,  0 },
   { 0xE2, 1, 0, NOP,   0 },
   { 0xE3, 1, 0, NOP,   0 },
@@ -350,7 +351,7 @@ const int cpu_instr_tkn[][INSTR_TKN_BUF] =
   { 0xE6, 2, 0, inc,   addr_8,   0 },
   { 0xE7, 1, 0, NOP,   0 },
   { 0xE8, 1, 0, inx,   0 },
-  { 0xE9, 2, 0, sbc,   data_8,   0 },
+  { 0xE9, 2, 0, sbc,   pound,    data_8,   0 },
   { 0xEA, 1, 0, nop,   0 },
   { 0xEB, 1, 0, NOP,   0 },
   { 0xEC, 3, 0, cpx,   addr_16,  0 },
@@ -372,13 +373,17 @@ const int cpu_instr_tkn[][INSTR_TKN_BUF] =
   { 0xFC, 1, 0, NOP,   0 },
   { 0xFD, 3, 0, sbc,   addr_16,  comma,    x,        0 },
   { 0xFE, 3, 0, inc,   addr_16,  comma,    x,        0 },
-  { 0xFF, 1, 0, NOP,   0 }
+  { 0xFF, 1, 0, NOP,   0 },
+  { UNDEF }
 };
 
-/* No predefined labels needed for 6502
+/* Predefined labels needed for 6502
  */
 
 const label_type def_labels[] = {
+  { "nmi",   0xFFFA },
+  { "reset", 0xFFFC },
+  { "irq",   0xFFFE },
   { "", UNDEF }
 };
 
