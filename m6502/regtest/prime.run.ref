@@ -3,6 +3,9 @@ Simulating file prime.asm starting at line 9
 > [2] a: 00 p: 00 pc: 0200 sp: FF x: 00 y: 00 
 > [ 1]    38 0243: done:	rts
 > ---
+[1]     9 0200: prime:	lda #2
+[2] a: 00 p: 00 pc: 0200 sp: FF x: 00 y: 00 
+---
 [1]    10 0202: 	sta pstore
 [2] a: 02 p: 00 pc: 0202 sp: FF x: 00 y: 00 
 ---

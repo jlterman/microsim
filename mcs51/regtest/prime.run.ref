@@ -4,6 +4,10 @@ Simulating file prime.asm starting at line 3
 [2] r5: 00 r6: 00 r7: 00 
 > [ 1]    26 0028: done:	ret
 > ---
+[1]     3 0000: prime:	mov	pstore, #2
+[2] b: 00 a: 00 c: 0 dptr: 0000 pc: 0000 r0: 00 r1: 00 r2: 00 r3: 00 r4: 00 
+[2] r5: 00 r6: 00 r7: 00 
+---
 [1]     4 0003: 	mov	pstore+1, #3	; seed prime array with first 2 primes
 [2] b: 00 a: 00 c: 0 dptr: 0000 pc: 0003 r0: 00 r1: 00 r2: 00 r3: 00 r4: 00 
 [2] r5: 00 r6: 00 r7: 00 
