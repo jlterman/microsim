@@ -30,6 +30,8 @@
 #include "proc.h"
 #include "version.h"
 
+char cpu_version[] = "8051 backend " CPU_VERS;
+
 /* The token array contains all the reserved words for 8051 assembly. 
  */
 const str_storage tokens[] = 
@@ -82,8 +84,8 @@ const int isToken_table[ASCII_MAX] =
 const int isInstr_table[last_tok] = 
   { 
     0, 0, 0, 0, 0, 0, 0, 0, 
-    0, 0, 1, 1, 1, 1, 1, 1, 
-    0, 1, 1, 1, 1, 1, 1, 0, 
+    0, 0, 1, 1, 1, 1, 1, 0, 
+    1, 1, 1, 1, 1, 1, 1, 0, 
     1, 1, 1, 1, 1, 1, 1, 1,
     1, 1, 1, 1, 1, 1, 1, 1, 
     1, 1, 1, 0, 0, 0, 0, 0, 
@@ -342,7 +344,7 @@ const int cpu_instr_tkn[][INSTR_TKN_BUF] =
   { 0xF2, 1, 2, movx,  at_r0,    comma,    a,        0 },
   { 0xF3, 1, 2, movx,  at_r1,    comma,    a,        0 },
   { 0xF4, 1, 1, cpl,   a,        0 },
-  { 0xF5, 2, 1, mov,   a,        comma,    addr_8,   0 },
+  { 0xF5, 2, 1, mov,   addr_8,   comma,    a,        0 },
   { 0xF6, 1, 1, mov,   at_r0,    comma,    a,        0 },
   { 0xF7, 1, 1, mov,   at_r1,    comma,    a,        0 },
   { 0xF8, 1, 1, mov,   r0,       comma,    a,        0 },

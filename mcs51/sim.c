@@ -806,45 +806,45 @@ void doStep()
       if (*acc < ram[addr]) setC(); else clrC();
       if (*acc != ram[addr]) relJmp(pc, memory[pc+2]);
       break;
-    case 0xB6: /* cjne a, @r0, addr */
+    case 0xB6: /* cjne @r0, #data, addr */
       if (*acc < ram[*reg0]) setC(); else clrC();
-      if (*acc != ram[*reg0]) relJmp(pc, memory[pc+2]);
+      if (ram[*reg0] != memory[pc+1]) relJmp(pc, memory[pc+2]);
       break;
-    case 0xB7: /* cjne a, @r1, addr */
+    case 0xB7: /* cjne @r1, #data, addr */
       if (*acc < ram[*reg1]) setC(); else clrC();
-      if (*acc != ram[*reg1]) relJmp(pc, memory[pc+2]);
+      if (ram[*reg1] != memory[pc+1]) relJmp(pc, memory[pc+2]); 
+    break;
+    case 0xB8: /* cjne r0, #data, addr */
+      if (*reg0 < memory[pc+1]) setC(); else clrC();
+      if (*reg0 != memory[pc+1]) relJmp(pc, memory[pc+2]);
       break;
-    case 0xB8: /* cjne a, r0, addr */
-      if (*acc < *reg0) setC(); else clrC();
-      if (*acc != *reg0) relJmp(pc, memory[pc+2]);
+    case 0xB9: /* cjne r1, #data, addr */
+      if (*reg1 < memory[pc+1]) setC(); else clrC();
+      if (*reg1 != memory[pc+1]) relJmp(pc, memory[pc+2]);
       break;
-    case 0xB9: /* cjne a, r1, addr */
-      if (*acc < *reg1) setC(); else clrC();
-      if (*acc != *reg1) relJmp(pc, memory[pc+2]);
+    case 0xBA: /* cjne r2, #data, addr */
+      if (*reg2 < memory[pc+1]) setC(); else clrC();
+      if (*reg2 != memory[pc+1]) relJmp(pc, memory[pc+2]);
       break;
-    case 0xBA: /* cjne a, r2, addr */
-      if (*acc < *reg2) setC(); else clrC();
-      if (*acc != *reg2) relJmp(pc, memory[pc+2]);
+    case 0xBB: /* cjne r3, #data, addr */
+      if (*reg3 < memory[pc+1]) setC(); else clrC();
+      if (*reg3 != memory[pc+1]) relJmp(pc, memory[pc+2]);
       break;
-    case 0xBB: /* cjne a, r3, addr */
-      if (*acc < *reg3) setC(); else clrC();
-      if (*acc != *reg3) relJmp(pc, memory[pc+2]);
+    case 0xBC: /* cjne r4, #data, addr */
+      if (*reg4 < memory[pc+1]) setC(); else clrC();
+      if (*reg4 != memory[pc+1]) relJmp(pc, memory[pc+2]);
       break;
-    case 0xBC: /* cjne a, r4, addr */
-      if (*acc < *reg4) setC(); else clrC();
-      if (*acc != *reg4) relJmp(pc, memory[pc+2]);
+    case 0xBD: /* cjne r5, #data, addr */
+      if (*reg5 < memory[pc+1]) setC(); else clrC();
+      if (*reg5 != memory[pc+1]) relJmp(pc, memory[pc+2]);
       break;
-    case 0xBD: /* cjne a, r5, addr */
-      if (*acc < *reg5) setC(); else clrC();
-      if (*acc != *reg5) relJmp(pc, memory[pc+2]);
+    case 0xBE: /* cjne r6, #data, addr */
+      if (*reg6 < memory[pc+1]) setC(); else clrC();
+      if (*reg6 != memory[pc+1]) relJmp(pc, memory[pc+2]);
       break;
-    case 0xBE: /* cjne a, r6, addr */
-      if (*acc < *reg6) setC(); else clrC();
-      if (*acc != *reg6) relJmp(pc, memory[pc+2]);
-      break;
-    case 0xBF: /* cjne a, r7, addr */
-      if (*acc < *reg7) setC(); else clrC();
-      if (*acc != *reg7) relJmp(pc, memory[pc+2]);
+    case 0xBF: /* cjne r7, #data, addr */
+      if (*reg7 < memory[pc+1]) setC(); else clrC();
+      if (*reg7 != memory[pc+1]) relJmp(pc, memory[pc+2]);
       break;
     case 0xC0: /* push addr */
       push(memory[pc+1]);
@@ -900,7 +900,7 @@ void doStep()
       break;
     case 0xD0: /* pop addr */
       addr = memory[pc+1];
-      ram[data] = pop();
+      ram[addr] = pop();
       break;
     case 0xD1: /* acall addr */
       pc += 2;
