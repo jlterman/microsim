@@ -29,6 +29,10 @@
 #include <io.h>
 #endif
 
+extern char cpu_version[];
+
+const char asm_version[] = "Assembler " ASM_VERS "\nCopyright Jim Terman 2003";
+
 static FILE *bufd;                  /* file descripter of file being read for buffer */
 static char buf_store[BUF_SIZE];
 
@@ -182,7 +186,7 @@ int main(int argc, char *argv[])
 
   if (!strcmp(filename, "-")) filename = "standard input";
   if (version) 
-    printf("%s\n%s\nThis program is distributed under the GNU Public License.\n\n", asm_version, cpu_version);
+    printf("%s\n%s\nThis program is distributed under the GNU Public License.\n\n", cpu_version, asm_version);
   printf("Starting assembly of file %s\n", filename);
   
   numErr += doPass(&firstPass);

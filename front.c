@@ -358,7 +358,7 @@ static int setLabel(char *name, int value, int overWrite)
 	}
       
       memmove((void*) (sort_labels + index + 1), (void*) (sort_labels  + index), 
-	      (num_labels - index)*sizeof(label_type));
+	      (num_labels - index)*sizeof(int));
       sort_labels[index] = num_labels;
       ++num_labels;      
     }
