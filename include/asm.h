@@ -41,6 +41,8 @@
 #define SGN_BYTE_MAX 127
 #define SGN_BYTE_MIN -128
 
+typedef void (*passFunc)(const char*);
+
 #ifndef FRONTEND_LOCAL
 extern
 #endif
@@ -59,19 +61,17 @@ int getBuffer(void);
 #ifndef FRONTEND_LOCAL
 extern
 #endif
-int getLabelValue(char*);
+int getLabelValue(const char*);
 
 #ifndef FRONTEND_LOCAL
 extern
 #endif
-void firstPass(void);
+void firstPass(const char*);
 
 #ifndef FRONTEND_LOCAL
 extern
 #endif
-void secondPass(void);
-
-typedef void (*passFunc)();
+void secondPass(const char*);
 
 typedef const char* str_storage;
  
@@ -93,6 +93,8 @@ typedef struct
 extern int memory[MEMORY_MAX]; /* 64K of program memory */
 extern int pc;                 /* location of next instruction to be assembled */
 
+extern int silent;
+extern char *filename;
 extern FILE *lst;              /* list file descriptor, none if NULL */
 extern FILE *obj;              /* object file descriptor, none if NULL */
 

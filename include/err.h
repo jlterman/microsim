@@ -22,7 +22,7 @@
 #ifndef ERR_LOCAL
 extern
 #endif
-void printErr(FILE*, int, int);
+void printErr(FILE*, const char*, int, int);
 
 #ifndef ERR_LOCAL
 extern
