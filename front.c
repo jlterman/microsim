@@ -47,8 +47,9 @@
  */
 enum errNo 
   {
-    no_char = FRONTERR+1, undef_label, labval_undef, bad_number, bad_expr, miss_expr, zero_div, 
-    no_op, undef_org, noexpr_org, miss_colon, bad_equ, bad_db, bad_char
+    no_char = FRONTERR+1, undef_label, labval_undef, bad_number, bad_expr, zero_div, 
+    no_op, undef_org, noexpr_org, miss_colon, bad_equ, bad_db, bad_char, miss_par, 
+    no_leftPar
   };
 
 const str_storage frontErrMsg[] = 
@@ -58,7 +59,6 @@ const str_storage frontErrMsg[] =
     "Label value undefined",
     "Unrecognized character in number",
     "Unrecognized character in expression",
-    "Missing expression",
     "Divide by zero",
     "Unrecognized operator",
     "Non-constant label for org directive",
@@ -66,7 +66,9 @@ const str_storage frontErrMsg[] =
     "Missing colon at end of address label or unrecognized instruction",
     "Bad equ directive statement",
     "Bad db/dw directive statement",
-    "Bad character constant"
+    "Bad character constant",
+    "Missing closing paranthesis",
+    "Missing opening paranthesis"
   };
 
 /* All labels have to start with an alpha char; Afterwards may have any 
@@ -107,7 +109,7 @@ static const int isBase_table[ASCII_MAX] =
 /* ops contains all  existing supported mathematical 
  * operators in reverse order of precedence (follows C).
  */
-const str_storage ops = ".|^&-+%/*";
+const str_storage ops = "|^&-+%/*";
 
 /* isOp macro returns true if char is operator
  */
@@ -134,12 +136,12 @@ static const int isExpr_table[ASCII_MAX] =
   {
     0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
     0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
-    0, 0, 0, 0, 0, 0, 0, 0, 1, 1, 1, 1, 0, 1, 0, 1, /*  !"#$%&'()*+,-./ */
+    0, 0, 0, 0, 0, 1, 1, 0, 1, 1, 1, 1, 0, 1, 0, 1, /*  !"#$%&'()*+,-./ */
     1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 0, 0, 0, 0, 0, 0, /* 0123456789:;<=>? */
     0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, /* @ABCDEFGHIJKLMNO */
-    0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, /* PQRSTUVWXYZ[\]^_ */
+    0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 1, /* PQRSTUVWXYZ[\]^_ */
     0, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, /* `abcdefghijklmno */
-    1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 0, 0, 0, 0  /* pqrstuvwxyz{|}~  */
+    1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 0, 1, 0, 0  /* pqrstuvwxyz{|}~  */
  };
 
 #define slashChar(x) slashChar_table[(int) x]
@@ -169,21 +171,24 @@ static const char slashChar_table[ASCII_MAX] =
  */
 #define isCharToken(x) isCharToken_table[(int) x]
 
-#define isToken(x) (isToken_table[(int) x] + isOp(x))
+#define isToken(x) (isToken_table[(int) x] | isLabel_table[(int) x])
 
 #define ASM_DIRCTV_LEN  5
 
-const char *asm_dirctv[ASM_DIRCTV_LEN] = 
+static const char *asm_dirctv[ASM_DIRCTV_LEN] = 
   {
     "db", "dw", "equ", "org"
   };
 
-extern char *buffer;        /* line to be assembled */
-extern int pos;             /* used by nextToken() for pos in buffer */
+static char work_buf[BUF_SIZE]; /* working buffer */
+extern char *buffer;            /* line to be assembled */
+static int pos;                 /* used by nextToken() for pos in buffer */
 
 int memory[MEMORY_MAX] = { 0 }; /* 64K of program memory */
 int pc = 0;                     /* location of next instruction to be assembled */
 
+int silent = FALSE;
+char *filename = NULL;
 FILE *lst = NULL;               /* list file descriptor, none if NULL */
 FILE *obj = NULL;               /* object file descriptor, none if NULL */
 
@@ -254,16 +259,14 @@ static const char *getLabelName(int index)
  * Then it does a binary search of the array tokens.
  * If no match checks for label, number, and expr
  */
-static int nextToken(char *token)
+static int nextToken(char *token, const char* buffer)
 {
-  int index, end;
+  int d, index, end;
   int start = pos; /* start where last call left off */
 
-  while (buffer[start] && isspace(buffer[start])) ++start;
+  while (isspace(buffer[start])) ++start;
 
-  /* return NULL if only comment or whitespace found */
-
-  if (!buffer[start] || buffer[start]==';') return 0;
+  if (!buffer[start]) return 0;
 
    if (buffer[start]==',') 
      { 
@@ -282,61 +285,92 @@ static int nextToken(char *token)
        return character;
      }
 
-  /* If char is not token or not part of one, return error */
+  /* If char is not token or not part of one, or part of expr, return error */
 
-  if (!isCharToken(buffer[start]) && !isToken(buffer[start])) longjmp(err, no_char);
+  if (!isCharToken(buffer[start]) && !(isToken(buffer[start]) || isExpr(buffer[start]))) longjmp(err, no_char);
 
   if (isCharToken(buffer[start]))
     {
       pos = start + 1;
       token[0] = buffer[start]; token[1] = '\0';
-    }
-  else
-    {
-      end = start + 1;
-      while (isToken(buffer[end])) ++end;
-      pos=end;
-      strncpy(token, buffer+start, end - start); token[end - start] = '\0';
+      binarySearch(token, &index, getToken);
+      return index + 1;
     }
   
-  index = 0;
-  while (token[index]) 
+  if (!isdigit(buffer[start]) && isToken(buffer[start])) /* possible token, addr label, or label */
     {
-      token[index] = tolower(token[index]); ++index;
-    }
+      end = start + 1;
+      while (buffer[end] && (isToken(buffer[end]))) ++end;
+      strncpy(token, buffer+start, end - start); token[end - start] = '\0';
 
-
-  if (!binarySearch(token, &index, getToken))
-    {
-      return index + 1;       /* found match, first token is 1, not 0 */
-    }
-
-  if (!binarySearch(token, &index, getDirctvName))
-    {
-      return index + DIRCTV_BASE;
-    }
-
-  if (isalpha(token[0]))         /* not instr, but if 1st char alpha, label? */
-    {
-      for (index = 1; token[index] && isLabel(token[index]); ++index);
-      if (token[index]==':' && !token[index+1]) 
+      /* if we find a token or a label there may be a space or colon char
+       * we need to skip over
+       */
+      pos=end + (buffer[end]==' ' || buffer[end]==':');
+      
+      if (!binarySearch(token, &index, getToken))
 	{
-	  token[index] = '\0';
-	  return addr_label;
+	  return index + 1;        /* found match, first token is 1, not 0 */
 	}
-      if (!token[index]) return label;
+      
+      if (!binarySearch(token, &index, getDirctvName))
+	{
+	  return index + DIRCTV_BASE;
+	}
+      
+      if (isalpha(token[0]))            /* possible label */
+	{
+	  index = 0;
+	  while (token[index])          /* check to see if token is legal label */
+	    {
+	      if (!isLabel(token[index])) break;
+	      ++index;
+	    }
+	  if (!token[index])            /* if at end of string, legal label */
+	    {
+	      if (buffer[end]==':')     /* if followed by colon, addr label */
+		{
+		  return addr_label;
+		}
+	      else if (!buffer[end])
+		{
+		  return label;
+		}
+	      else if (buffer[end])    /* ordinary label not followd by arith op */
+		{
+		  while (buffer[end+1] && isspace(buffer[++end]));
+		  if (!isOp(buffer[end])) return label;
+		}
+	    }
+	}
     }
 
-  if (isdigit(token[0]))       /* number can be a digit plus alphanumeric str */
+  end = start + 1;
+  while (buffer[end] && (isExpr(buffer[end]) || isspace(buffer[end]))) ++end;
+  
+  d = 0;
+  for (index=start; index<end; ++index) /* arith op can be part of tokens, remove all spaces */
     {
-      for (index = 0; token[index] && isalnum(token[index]); ++index);
-      if (!token[index]) return number; 
+      if (!isspace(buffer[index])) token[d++] = buffer[index];
     }
+  token[d] = '\0';
+  pos = end;
 
+  if (isdigit(token[0]))
+    {
+      index = 0;
+      while (token[index])          /* check to see if token could be simply a number */
+	{
+	  if (!isalnum(token[index])) break;
+	  ++index;
+	}
+      if (!token[index]) return number; /* could be number, check syntax later */
+    }
   return expr;  /* has to be expr, will check syntax later */
 }
 
-static int setLabel(char *name, int value, int overWrite)
+
+static int setLabel(const char *name, int value, int overWrite)
 {
   int index;
 
@@ -369,7 +403,7 @@ static int setLabel(char *name, int value, int overWrite)
   return sort_labels[index];
 }
 
-int getLabelValue(char *name)
+int getLabelValue(const char *name)
 {
   int index;
   int value;
@@ -396,11 +430,11 @@ void printLabels(FILE* lst)
     }
 }
 
-static int getNumBase(char *b, int base)
+static int getNumBase(const char *b, int base, char let)
 {
   int value = 0;
   int digit;
-  while (*b)
+  while (*b && *b != let)
     {
       digit = (isdigit(*b)) ? *b - '0' : *b - 'a' + 10;
       if (digit>=base) longjmp(err, bad_number);
@@ -411,58 +445,63 @@ static int getNumBase(char *b, int base)
   return value;
 }
 
-static int getNumber(char *number)
+static int getNumber(const char *number)
 {
   int value = 0;
   char b = number[strlen(number) - 1];
   if (number[0] == '0' && number[1] == 'x')
     {
-      value = getNumBase(number + 2, 16);
+      value = getNumBase(number + 2, 16, '\0');
     }
   else if (isalpha(b))
     {
-      number[strlen(number) - 1] = '\0';
       switch (b)
 	{
-	case 'b': value = getNumBase(number, 2);  break;
-	case 'd': value = getNumBase(number, 10); break;
-	case 'h': value = getNumBase(number, 16); break;
-	case 'o': value = getNumBase(number, 8);  break;
+	case 'b': value = getNumBase(number, 2,  b); break;
+	case 'd': value = getNumBase(number, 10, b); break;
+	case 'h': value = getNumBase(number, 16, b); break;
+	case 'o': value = getNumBase(number, 8,  b); break;
 	}
     }
   else if (number[0] == '0')
     {
-      value = getNumBase(number+1, 8);
+      value = getNumBase(number+1, 8, '\0');
     }
   else
-    value = getNumBase(number, 10);
+    value = getNumBase(number, 10, '\0');
   return value;
+}
+
+static int findClosePar(const char *expr, int pos)
+{
+  int level = 1;
+  while (level && expr[++pos])   /* skip until back to level 0 */
+    {
+      if (expr[pos] == '(')
+	{
+	  ++level;
+	}
+      else if (expr[pos] == ')')
+	{
+	  --level;
+	}
+    }
+  if (level) longjmp(err, miss_par);
+  return pos;
 }
 
 /* findOp will search for an operator in expr str.
  * Note: this routine skips over paranthetical expr's.
  */
-static int findOp(char op, char *expr)
+static int findOp(const char op, const char *expr)
 {
-  int level, p = 0;
+  int p = 0;
 
   while (expr[p])
     {
       if (expr[p] == '(') /* don't return ops in paran expr's */
 	{
-	  level = 1;
-	  while (level)   /* skip until back to level 0 */
-	    {
-	      if (expr[p] == '(')
-		{
-		  ++level;
-		}
-	      else if (expr[p] == ')')
-		{
-		  --level;
-		}
-	      ++p;
-	    }
+	  p = findClosePar(expr, p) + 1;
 	}
       else if (isalpha(expr[p]))
 	{
@@ -472,64 +511,61 @@ static int findOp(char op, char *expr)
 	{
 	  while (isalnum(expr[++p])); /* skip over numbers */
 	}
-      else if (isspace(expr[p]))
-	{
-	  ++p;                        /* skip over whitespace */
-	}
       else if (expr[p] == op)
 	{
 	  return p;                  /* return pos of op */
 	}
-      else if (!isOp(op))
+      else if (isOp(expr[p]))
+	{
+	  ++p;
+	}
+      else
 	{
 	  longjmp(err, bad_expr);      /* unknown char */
 	}
-      else
-	++p;
     }
-  return -1;
+  return UNDEF;
 }
 
-static int getExpr(char *expr)
+static int getExpr(const char *expr)
 {
-  int pos, p = 0;
-  int lvalue = 0;
-  int rvalue = 0;
-  int value = 0;
+  int pos, p, start, lvalue, rvalue, value;
   char subexpr[BUF_SIZE];
 
-  while (isspace(expr[0])) ++expr;
-  p = strlen(expr)-1;
-  while (p>=0 && isspace(expr[p])) --p;
-  if (p<0) longjmp(err, miss_expr);
-  expr[p+1]='\0';
+  if (expr[0]=='(' && !expr[findClosePar(expr, 0)+1])
+    {
+      strncpy(subexpr, expr+1, strlen(expr)-2); 
+      subexpr[strlen(expr)-2] = '\0';
+      return getExpr(subexpr);
+    }
+  else if (findOp(')', expr)>0)
+    longjmp(err, no_leftPar);
 
+  start = (expr[0] == '-' || expr[0] == '+');
   p = 0;
   while (ops[p])
     {
-      pos = findOp(ops[p], expr+1);
+      pos = findOp(ops[p], expr+start) + start;
+
       if (pos>0) break;
       ++p;
     }
   if (pos<0)
     {
-      p = (expr[0] == '-');
-
-      if (isalpha(expr[p]))
+      if (isalpha(expr[start]))
 	{
-	  value = getLabelValue(expr+p);
+	  value = getLabelValue(expr+start);
 	}
-      else if (isdigit(expr[p]))
+      else if (isdigit(expr[start]))
 	{
-	  value = getNumber(expr+p);
+	  value = getNumber(expr+start);
 	}
-      if (p)
+      if (start && expr[0] == '-')
 	return -value;
       else
 	return value;
     }
 
-  ++pos;
   strncpy(subexpr, expr, pos); subexpr[pos] = '\0';
   lvalue = getExpr(subexpr);
   
@@ -547,6 +583,12 @@ static int getExpr(char *expr)
     case '/': 
       if (!rvalue) longjmp(err, zero_div);
       value = lvalue / rvalue;
+      break;
+    case '%':
+      if (rvalue)
+	value = lvalue % rvalue;
+      else
+	return 0;
       break;
     default: 
       longjmp(err, no_op);
@@ -579,7 +621,7 @@ static void newdbtkn(int *dbtkn, int *tkn, int instr_token, int data_token)
   dbtkn[dt] = 0;
 }
 
-void firstPass(void)
+void firstPass(const char *buffer)
 {
   char token[BUF_SIZE];
   const int *theInstr;
@@ -587,7 +629,7 @@ void firstPass(void)
   int tkn[TKN_BUF] = { 0 };       /* tokenized buffer */
 
 
-  while (tkn_pos<TKN_BUF-1 && (tkn[tkn_pos] = nextToken(token)) )
+  while (tkn_pos<TKN_BUF-1 && (tkn[tkn_pos] = nextToken(token, buffer)) )
     {
       switch (tkn[tkn_pos])
 	{
@@ -606,7 +648,7 @@ void firstPass(void)
 	  --tkn_pos;
 	  break;
 	case equ:
-	  if (nextToken(token) == number)
+	  if (nextToken(token, buffer) == number)
 	    {
 	      tkn[++tkn_pos] = number;
 	      tkn[++tkn_pos] = getNumber(token);
@@ -659,15 +701,14 @@ void firstPass(void)
     }
 }
 
-void secondPass(void)
+void secondPass(const char *buffer)
 {
   char token[BUF_SIZE];
-  int t;
   int tkn_pos = 0;
   int tkn[TKN_BUF] = { 0 };       /* tokenized buffer */
   int dbtkn[TKN_BUF] = { 0 };
 
-  while (tkn_pos<TKN_BUF-1 && (tkn[tkn_pos] = nextToken(token)) )
+  while (tkn_pos<TKN_BUF-1 && (tkn[tkn_pos] = nextToken(token, buffer)) )
     {
       switch (tkn[tkn_pos])
 	{
@@ -702,9 +743,7 @@ void secondPass(void)
 	  --tkn_pos;
 	  break;
 	case equ:
-	  while (isspace(buffer[pos])) ++pos; t = pos; /* read expr after equ */
-	  while (isExpr(buffer[pos])) ++pos;
-	  strncpy(token, buffer+t, pos - t); token[pos - t] = '\0';
+	  if (!nextToken(token, buffer)) longjmp(err, bad_equ);
 	  tkn[++tkn_pos] = number;
 	  tkn[++tkn_pos] = getExpr(token);
 	  break;
@@ -748,23 +787,34 @@ void secondPass(void)
 
 int doPass(passFunc pass)
 {
-  int errNo, oldPC;
-  int line = 0;
-  int numErr = 0;
+  int errNo, oldPC, s, d, line = 0, numErr = 0;
 
   initLabels();
   pc = 0;
-  while (getBuffer())
+  while ( (getBuffer()) )
     {
-      ++line; oldPC = pc;
-      if ((errNo = setjmp(err)) != 0)
+      ++line;
+      s = 0; d = 0;
+      while (isspace(buffer[s])) ++s;
+      while (buffer[s] && buffer[s] != ';')
 	{
-	  ++numErr;
-	  if (lst) printErr(lst, errNo, line);
-	  printErr(stderr, errNo, line);
-	  continue;
+	  if (isToken(work_buf[d-1]) && buffer[s] && isToken(buffer[s])) work_buf[d++] = ' ';	  
+	  while (buffer[s] && !isspace(buffer[s])) work_buf[d++] = tolower(buffer[s++]);
+	  while (isspace(buffer[s])) ++s;
 	}
-      pass();
+      work_buf[d] = '\0';
+      if (d)
+	{
+	  oldPC = pc; pos = 0;
+	  if ((errNo = setjmp(err)) != 0)
+	    {
+	      ++numErr;
+	      if (lst) printErr(lst, filename, errNo, line);
+	      printErr(stderr, filename, errNo, line);
+	      continue;
+	    }
+	  pass(work_buf);
+	}
       if (lst) writeList(oldPC, line, buffer);
     }
   return numErr;

@@ -1,7 +1,7 @@
 CFLAGS=-Wall -pedantic -c -I ./ -I ./include
 OBJS=main.o front.o err.o
 
-version.h: asm_vers main.c front.c back.c
+version.h: asm_vers *.c
 	echo \#define ASM_VERS \"version `cat asm_vers`, build date\: `date "+%B %d, %Y %k:%M:%S"`\">version.h; \rm -f main.o
 
 back51:

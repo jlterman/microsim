@@ -122,6 +122,7 @@ void loadMemory(const int *theInstr, int *tkn)
   if (theInstr[INSTR_TKN_OP]<256) memory[pc++] = theInstr[INSTR_TKN_OP];
   for (t=INSTR_TKN_INSTR+1; theInstr[t]; ++t)
     {
+      if (handleTkn(theInstr[t], tkn, &tkn_pos)) continue;
       switch (theInstr[t])
 	{
 	case data_8:

@@ -37,7 +37,6 @@ static FILE *bufd;                  /* file descripter of file being read for bu
 static char buf_store[BUF_SIZE];
 
 char *buffer = buf_store;           /* line to be assembled */
-int pos;                            /* used by nextToken() for pos in buffer */
 
 
 static void writeMemory(int addr, int size)
@@ -79,6 +78,7 @@ static FILE *safeOpen(char* filename, char* mode)
   FILE *fd;
 
   if (!filename) return NULL;
+  if (!strcmp(filename, "-")) return stdin;
   if ( (fd = fopen(filename, mode)) == NULL )
     {
       fprintf (stderr, "Cannot open %s\n", filename);
@@ -102,7 +102,6 @@ int getBuffer(void)
 
   i = strlen(buffer);
   while (i-- && buffer[i]<' ') buffer[i] = '\0';
-  pos = 0;
   return TRUE;
 }
 
@@ -122,7 +121,7 @@ static char *newSuffix(char *oldname, char *newsuffix)
 
 static void printHelp(void)
 {
-  printf("asm file.asm [-v] [-l] [-o file.obj]\n");
+  printf("asm [-vVsLl] [-o file.obj] file1 file2 ...\n");
   exit(1);
 }
 
@@ -132,13 +131,13 @@ int main(int argc, char *argv[])
   int c;
   char *lstFile = NULL;
   char *objFile = NULL;
-  char *filename = argv[1];
   int numErr = 0;
   int batch = FALSE;
+  int verbose = FALSE;
   int version = FALSE;
   char temp[BUF_SIZE] = "asm51XXXXXX";
 
-  while ((c = getopt(argc-1, argv+1, "vhlLo:")) != EOF)
+  while ((c = getopt(argc, argv, "svhlLo:")) != EOF)
     {
       switch (c)
 	{
@@ -151,8 +150,14 @@ int main(int argc, char *argv[])
 	case 'L':
 	  batch = TRUE;
 	  break;
-	case 'v':
+	case 'V':
 	  version = TRUE;
+	  break;
+	case 'v':
+	  verbose = TRUE;
+	  break;
+	case 's':
+	  silent = TRUE;
 	  break;
 	default:
 	  printHelp();
@@ -160,58 +165,64 @@ int main(int argc, char *argv[])
   
 	}
     }
+  if (optind == argc) printHelp();
 
-  bufd = safeOpen(filename, "r");
-  if (batch)
+  for (c = optind; c<argc; ++c)
     {
-      numErr += doPass(&firstPass);
-      rewind(bufd);
-      lst = stdout;
-      numErr += doPass(&secondPass);
-      if (numErr) printf("Assembly terminated with %d errors.\n", numErr);
-      return (numErr>0);
-    }
-
-  if (!objFile) objFile = newSuffix(filename, "obj");
-
+      filename = argv[c];
+      bufd = safeOpen(filename, "r");
+      if (batch)
+	{
+	  numErr += doPass(&firstPass);
+	  rewind(bufd);
+	  lst = stdout;
+	  numErr += doPass(&secondPass);
+	  if (numErr) printf("Assembly terminated with %d errors.\n", numErr);
+	  return (numErr>0);
+	}
+      
+      if (!objFile) objFile = newSuffix(filename, "obj");
+      
 #ifdef __WIN32__
-  mktemp(temp);
-  obj = safeOpen(temp, "w");
+      mktemp(temp);
+      obj = safeOpen(temp, "w");
 #else
-  if ( (obj = fdopen(mkstemp(temp), "w") ) == NULL)
-    { 
-      fprintf(stderr, "Can't open tmp file!\n"); exit(1); 
-    }
+      if ( (obj = fdopen(mkstemp(temp), "w") ) == NULL)
+	{ 
+	  fprintf(stderr, "Can't open tmp file!\n"); exit(1); 
+	}
 #endif
-
-  if (!strcmp(filename, "-")) filename = "standard input";
-  if (version) 
-    printf("%s\n%s\nThis program is distributed under the GNU Public License.\n\n", cpu_version, asm_version);
-  printf("Starting assembly of file %s\n", filename);
-  
-  numErr += doPass(&firstPass);
-  if (!numErr && !batch) printf("First pass successfully completed.\n");
-
-  rewind(bufd);
-  lst = safeOpen(lstFile, "w");
-  numErr += doPass(&secondPass);
-  if (numErr)
-    {
-      printf("Assembly terminated with %d errors.\n", numErr);
-      remove(temp);
+      
+      if (version) 
+	printf("%s\n%s\nThis program is distributed under the GNU Public License.\n\n", cpu_version, asm_version);
+      if (verbose && !strcmp(filename, "-"))  printf("Starting assembly from standard input\n");
+      if (verbose) printf("Starting assembly of file %s\n", filename);
+      
+      numErr += doPass(&firstPass);
+      if (!numErr && !batch && verbose) printf("First pass successfully completed.\n");
+      
+      rewind(bufd);
+      lst = safeOpen(lstFile, "w");
+      numErr += doPass(&secondPass);
+      if (numErr)
+	{
+	  if (verbose) printf("Assembly terminated with %d errors.\n", numErr);
+	  remove(temp);
+	}
+      else
+	{
+	  if (verbose) printf("Second pass successfully completed.\n\n");
+	  if (lst) printLabels(lst);
+	  
+	  if (obj) writeObj(pc, MEMORY_MAX);
+	  fclose(obj);
+	  rename(temp, objFile);
+	  
+	  if (verbose) printf("Assembly sucessfully completed.\n"
+			      "Object code written to file %s\n", objFile);
+	  if (lst) printf("List output written to file %s\n", lstFile);
+	}
+      if (numErr>0) return numErr;
     }
-  else
-    {
-      printf("Second pass successfully completed.\n\n");
-      if (lst) printLabels(lst);
-
-      if (obj) writeObj(pc, MEMORY_MAX);
-      fclose(obj);
-      rename(temp, objFile);
-
-      printf("Assembly sucessfully completed.\n"
-	     "Object code written to file %s\n", objFile);
-      if (lst) printf("List output written to file %s\n", lstFile);
-    }
-  return (numErr>0);
+  return 0;
 }

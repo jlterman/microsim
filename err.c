@@ -27,7 +27,7 @@
 #include "asm.h"
 #include "err.h"
 
-void printErr(FILE *fd, int errNo, int line)
+void printErr(FILE *fd, const char *filename, int errNo, int line)
 {
   const char *msg;
 
@@ -35,6 +35,6 @@ void printErr(FILE *fd, int errNo, int line)
   else if (errNo<CPUERR) msg = backErrMsg[errNo - BACKERR -1];
   else msg = procErrMsg[errNo - CPUERR -1];
 
-  fprintf(fd, "****** Syntax error #%d at line %d: %s\n", errNo, line, msg);
+  fprintf(fd, "%s:%d ****** Syntax error #%d: %s\n", filename, line, errNo, msg);
   fprintf(fd, "%s\n", buffer);
 }
