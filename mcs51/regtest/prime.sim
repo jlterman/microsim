@@ -1,0 +1,7 @@
+dl
+dr b -
+b $done
+t
+pmd pstore @a
+q
+yes
