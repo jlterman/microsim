@@ -7,7 +7,7 @@ version_cpu.h: cpu_vers $(addsuffix .c,$(basename $(ASM_OBJS)))
 	echo \#define CPU_VERS \"version `cat cpu_vers`, build date\: `date "+%B %d, %Y %k:%M:%S"`\">$@; \rm -f asm.o
 
 asm: main.o $(ASM_OBJS) $(OBJS)
-	$(CC) $^ -o $@ ; $@ -V
+	$(CC) $^ -o $@ ; ./$@ -V
 
 sim: asm
 	cp asm$(EXE) sim$(EXE)
