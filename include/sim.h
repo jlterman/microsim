@@ -21,6 +21,16 @@
 
 #ifndef _SIM_HEADER
 #define _SIM_HEADER
+/* break structure entry
+ */
+typedef struct
+{
+  int tmp;    /* True if break cleared when hit */
+  int used;   /* True if entry a valid break */
+  int pc;     /* address of break */
+  int op;     /* opcode that break entry in memory[] replaced */
+  char *expr; /* if not NULL, break only if expr evaluates non-zero */
+} brk_struct;
 
 enum sim_err 
   {
@@ -73,7 +83,7 @@ void stepOne(void);
 #ifndef SIM_LOCAL
 extern
 #endif
-int run(int);
+int run(int, int);
 
 /* print break number. Print all if UNDEF, return TRUE if break exists
  */
@@ -82,8 +92,17 @@ extern
 #endif
 int printBreak(FILE* fd, int brk);
 
+#ifdef SIM_LOCAL
+extern
+#endif
+int printOneBreak(FILE*, int, brk_struct*);
+
 #ifndef SIM_LOCAL
 extern int run_sim; /* set true, when simulator is running */
+#endif
+
+#ifndef MAIN_LOCAL
+extern void traceDisplay();
 #endif
 
 #endif
