@@ -40,11 +40,11 @@ enum instr_tokens
     bcc, bcs,  beq, bit, bmi, bne, bpl, brk,
     bvc, bvs,  clc, cld, cli, clv, cmp, cpx,
     cpy, dec,  dex, dey, eor, inc, inx, iny,
-    jmp, jsr,  lda, ldx, ldy, lsr, nop, NOP,
-    ora, p, pc_reg, pha, php, pla, plp, rol, 
-    ror, rti,  rts, sbc, sec, sed, sei,  sp, 
-    sta, stx,  sty, tax, tay, tsx, txa, txs, 
-    tya, x,    y,   LAST_PROC_TOKEN
+    jmp, jsr,  lda, ldx, ldy, lsr, nop, ora, 
+    p, pc_reg, pha, php, pla, plp, rol, ror, 
+    rti,  rts, sbc, sec, sed, sei,  sp, sta, 
+    stx,  sty, tax, tay, tsx, txa, txs, tya, 
+    x  ,    y, LAST_PROC_TOKEN, NOP
   };
 
  #define NMI   0xFFFA

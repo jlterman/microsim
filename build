@@ -3,7 +3,22 @@
 cmd=build
 CC=cc
 os=`uname -o`
+m=`uname -m`
 MAKE=make
+
+while getopts cgbtaho:p: opt ; do
+    case $opt in
+	g) debug=1   ;;
+	c) cmd=clean ;;
+	b) cmd=build ;;
+        t) cmd=test  ;;
+	a) cmd=all   ;;
+	o) os=OPTARG ;;
+	p) m=OPTARG  ;;
+	*) echo "build [-c] [-g] [-b] [-t] [-a] [-h] [-o os] [-p proc]"; 
+	   exit 1 ;;
+    esac
+done
 
 case $os in
     Cygwin) CC="gcc -mno-cygwin"; MAKE="$MAKE EXE=.exe";;
@@ -11,23 +26,16 @@ case $os in
 	 *) echo "Warning: $os not directly supported"
 esac
 
-while getopts cgbtah opt ; do
-    case $opt in
-	c) cmd=clean ;;
-	g) debug=1 ;;
-	b) cmd=build ;;
-        t) test=1 ;;
-	a) cmd=all ;;
-	*) echo "build [-c] [-g] [-b] [-t] [-a] [-h]"; exit 1 ;;
-    esac
-done
-
-if [ $debug ] ; then CC="$CC -g" 
-		else CC="$CC -O" ; fi
+if [ $debug ]
+    then CC="$CC -g" 
+    else CC="$CC -O"
+fi
 
 echo "Doing $MAKE CC=$CC $cmd for os: $os"
 
 $MAKE "CC=$CC" $cmd
 
-if [ $? -ne 0 ] ; then echo "Make failed"
-		  else choe "Make okay"
+if [ $? -ne 0 ] 
+    then echo "Make failed"
+    else echo "Make okay"
+fi

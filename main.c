@@ -324,7 +324,8 @@ static int answer(str_storage msg)
   char buffer[5] = { 0 }; nchar = 0;
   while (strcmp(buffer, "yes\n") && strcmp(buffer, "no\n"))
     {
-      printf("%s (yes or no)? ", msg); fgets(buffer, 5, stdin);
+      printf("%s (yes or no)? ", msg); fflush(stdout);
+      fgets(buffer, 5, stdin);
     }
   return (!strcmp(buffer, "yes\n"));
 }
@@ -922,6 +923,7 @@ static FILE *openTmpFile(char *temp, char *args)
 #endif
   safeAddArray(tmpFILE, tmpfiles, num_files, size_files);
   tmpfiles[num_files].fd = fd;
+  tmpfiles[num_files].name = NULL;
   safeDupStr(tmpfiles[num_files].name, temp);
   ++num_files;
   return fd;
@@ -1019,7 +1021,7 @@ int main_sim(int argc, char *argv[])
   while (!done)
     {
       strcpy(newLine, "\n");
-      printf("\n> "); nchar = 0;
+      printf("\n> "); nchar = 0; fflush(stdout);
       line = safeGetLine(stdin);
       if (line && strlen(line))
 	{
@@ -1165,16 +1167,19 @@ int main_asm(int argc, char *argv[])
 int main(int argc, char *argv[])
 {
   atexit(removeAllTmp);
+
+#ifndef __WIN32__
   signal(SIGHUP, myhandler);
-  signal(SIGINT, myhandler);
   signal(SIGQUIT, myhandler);
+  signal(SIGKILL, myhandler);
+  signal(SIGPIPE, myhandler);
+  signal(SIGALRM, myhandler);
+#endif
+  signal(SIGINT, myhandler);
   signal(SIGILL, myhandler);
   signal(SIGABRT, myhandler);
   signal(SIGFPE, myhandler);
-  signal(SIGKILL, myhandler);
   signal(SIGSEGV, myhandler);
-  signal(SIGPIPE, myhandler);
-  signal(SIGALRM, myhandler);
   signal(SIGTERM, myhandler);
 
 #ifdef __WIN32__

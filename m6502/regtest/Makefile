@@ -6,11 +6,11 @@ clean:
 
 %.obj: %.asm ;	  ../asm $<
 
-%.obj.out: %.obj; @{ if diff $< $(<).ref ; then echo $< succeeded; else echo $@:1 '******' $@ failed ; fi } > $@ ; cat $@
+%.obj.out: %.obj; @{ if diff --strip-trailing-cr $< $(<).ref ; then echo $< succeeded; else echo $@:1 '******' $@ failed ; fi } > $@ ; cat $@
 
 %.run: %.sim; ../sim $*.asm < $< > $@
 
-%.run.out: %.run; @{ if diff $< $(<).ref ; then echo $< succeeded; else echo $@:1 '******' $@ failed ; fi } > $@ ; cat $@
+%.run.out: %.run; @{ if diff --strip-trailing-cr $< $(<).ref ; then echo $< succeeded; else echo $@:1 '******' $@ failed ; fi } > $@ ; cat $@
 
 all:	clean $(ASM_TESTS) $(SIM_TESTS)
 	@echo Running $(PROC) assembly and simulator tests

@@ -12,8 +12,13 @@ version.h: sim_vers asm_vers *.c
 %.trg:
 	$(MAKE) -C $* $(TRGCMD)
 
-all:	version.h $(OBJS) $(TARGS)
+build:	version.h $(OBJS) $(TARGS)
+
+test:	build
+	$(MAKE) $(TARGS) TRGCMD=test
 
 clean:  
 	\rm -f version.h *.o
 	$(MAKE) $(TARGS) TRGCMD=clean
+
+all:	clean build test

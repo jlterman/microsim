@@ -341,10 +341,6 @@ void firstPass(str_storage buffer)
   jmp_buf exprErr;
   label_type *l;
 
-  static int size_buffer = 0;
-  if (strlen(buffer)>size_buffer) 
-    safeRealloc(token, char, size_buffer = strlen(buffer));
-
   while (tkn_pos<TKN_BUF - 1 && (tkn[tkn_pos] = nextToken(buffer)))
     {
       switch (tkn[tkn_pos])
@@ -434,10 +430,6 @@ void secondPass(str_storage buffer)
   int tkn[TKN_BUF] = { 0 };       /* tokenized buffer */
   int dataTkn[TKN_BUF] = { 0 };
 
-  static int size_buffer = 0;
-  if (strlen(buffer)>size_buffer) 
-    safeRealloc(token, char, size_buffer = strlen(buffer));
-
   while (tkn_pos<TKN_BUF - 1 && (tkn[tkn_pos] = nextToken(buffer)))
     {
       switch (tkn[tkn_pos])
@@ -514,15 +506,11 @@ int doPass(passFunc pass)
 {
   static char *work_buf = NULL;
   static int  size_work_buf = 0;
-
   str_storage buffer;
   int errNo, s, d, line = 0, numErr = 0;
 
-  if (!work_buf) 
-    {
-      safeMalloc(work_buf, char, CHUNK_SIZE);
-      size_work_buf = CHUNK_SIZE;
-    }
+  if (!work_buf) safeMalloc(work_buf, char, size_work_buf = CHUNK_SIZE);
+  if (!token)    safeMalloc(token, char, size_work_buf)
   if (!labels) initLabels();
 
   pc = 0; oldPC = 0;
@@ -532,6 +520,7 @@ int doPass(passFunc pass)
 	{
 	  size_work_buf = strlen(buffer) + 1;
 	  safeRealloc(work_buf, char, size_work_buf);
+	  safeRealloc(token, char, size_work_buf);
 	}
       ++line;
       s = 0; d = 0;

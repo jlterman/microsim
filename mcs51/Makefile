@@ -10,15 +10,18 @@ asm: main.o $(ASM_OBJS) $(OBJS)
 	$(CC) $^ -o $@ ; $@ -V
 
 sim: asm
-	cp asm sim
+	cp asm$(EXE) sim$(EXE)
 
 proc.o: proc.c
 	$(CC) $(CFLAGS) $^ -o proc.o
 
 clean:
-	\rm -f *.o version_cpu.h asm asm sim
+	\rm -f *.o version_cpu.h asm$(EXE) sim$(EXE)
 	$(MAKE) -C regtest clean
 
-all:	version_cpu.h asm sim
+build:	version_cpu.h asm sim
+
+test:	build
 	cd regtest; $(MAKE) all
 
+all:	clean build test

@@ -180,8 +180,9 @@ static int safeAddLabel(const char *name, int value)
       safeRealloc(labels, label_type, size_labels += CHUNK_SIZE);
       safeRealloc(sort_labels, int, size_labels);
     }
-  safeDupStr(labels[num_labels].name, name);
   labels[num_labels].value = value;
+  labels[num_labels].name  = NULL;
+  safeDupStr(labels[num_labels].name, name);
   sort_labels[num_labels] = num_labels;
   num_labels++;
   qsort(sort_labels, num_labels, sizeof(int), &cmplabel);
@@ -359,7 +360,7 @@ static int findOp(const char op, str_storage expr)
  */
 static int findBinaryOp(str_storage expr)
 {
-  int pos, op = 0;
+  int pos = 0, op = 0;
   while (binary_ops[op])
     {
       pos = findOp(binary_ops[op], expr);

@@ -42,11 +42,11 @@ const str_storage tokens[LAST_PROC_TOKEN - PROC_TOKEN] =
     "bcc", "bcs", "beq", "bit", "bmi", "bne", "bpl", "brk",
     "bvc", "bvs", "clc", "cld", "cli", "clv", "cmp", "cpx",
     "cpy", "dec", "dex", "dey", "eor", "inc", "inx", "iny",
-    "jmp", "jsr", "lda", "ldx", "ldy", "lsr", "nop", "NOP",
-    "ora",   "p",  "pc", "pha", "php", "pla", "plp", "rol",
-    "ror", "rti", "rts", "sbc", "sec", "sed", "sei",  "sp",
-    "sta", "stx", "sty", "tax", "tay", "tsx", "txa", "txs", 
-    "tya",   "x",   "y"
+    "jmp", "jsr", "lda", "ldx", "ldy", "lsr", "nop", "ora",
+      "p",  "pc", "pha", "php", "pla", "plp", "rol", "ror", 
+    "rti", "rts", "sbc", "sec", "sed", "sei",  "sp", "sta", 
+    "stx", "sty", "tax", "tay", "tsx", "txa", "txs", "tya",   
+      "x",   "y"
   };
 
 /* isRegister_table contains 0 if a token is not a register,
@@ -59,10 +59,10 @@ const int isRegister_table[LAST_PROC_TOKEN - PROC_TOKEN] =
     0, 0, 0, 0, 0, 0, 0, 0,
     0, 0, 0, 0, 0, 0, 0, 0,
     0, 0, 0, 0, 0, 0, 0, 0,
-    0, 1, 2, 0, 0, 0, 0, 0,
-    0, 0, 0, 0, 0, 0, 0, 1,
+    1, 2, 0, 0, 0, 0, 0, 0,
+    0, 0, 0, 0, 0, 0, 1, 0,
     0, 0, 0, 0, 0, 0, 0, 0,
-    0, 1, 1
+    1, 1
   };
 
 /* Macro returns true when character is a 1 char token
@@ -106,11 +106,11 @@ const int isInstr_table[LAST_PROC_TOKEN - PROC_TOKEN] =
     1, 1, 1, 1, 1, 1, 1, 1, 
     1, 1, 1, 1, 1, 1, 1, 1, 
     1, 1, 1, 1, 1, 1, 1, 1, 
-    1, 1, 1, 1, 1, 1, 1, 1, 
-    1, 0, 0, 1, 1, 1, 1, 1, 
-    1, 1, 1, 1, 1, 1, 1, 0, 
-    1, 1, 1, 1, 1, 1, 1, 1, 
-    1, 0, 0
+    1, 1, 1, 1, 1, 1, 1, 1,
+    0, 0, 1, 1, 1, 1, 1, 1,
+    1, 1, 1, 1, 1, 1, 0, 1, 
+    1, 1, 1, 1, 1, 1, 1, 1,
+    0, 0
 };
 
 /* This array contains all the parameter info 

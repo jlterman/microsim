@@ -61,11 +61,11 @@ static int *instrReg_table[LAST_PROC_TOKEN - PROC_TOKEN] =
      NULL,  NULL,  NULL,   NULL,  NULL,  NULL,  NULL,  NULL, 
      NULL,  NULL,  NULL,   NULL,  NULL,  NULL,  &acc, &xreg, 
     &yreg,  NULL, &xreg,  &yreg,  NULL,  NULL, &xreg, &yreg, 
-     NULL,  NULL,  &acc,  &xreg, &yreg,  NULL,  NULL,  NULL, 
-     NULL,  NULL,  NULL,   &acc,  &psr,  NULL,  NULL,  NULL, 
-     NULL,  NULL,  NULL,   NULL,  NULL,  NULL,  NULL,  NULL, 
-     &acc, &xreg, &yreg,  &xreg, &yreg,  NULL, &xreg,  NULL, 
-    &yreg,  NULL,  NULL
+     NULL,  NULL,  &acc,  &xreg, &yreg,  NULL,  NULL,  &acc, 
+     NULL,  NULL,  &acc,   &psr,  &acc,  &psr,  NULL,  NULL,
+     NULL,  NULL,  &acc,   NULL,  NULL,  NULL,  NULL,  &acc, 
+    &xreg, &yreg,  &xreg, &yreg,  NULL, &xreg,  NULL, &yreg,  
+     NULL,  NULL
 };
 
 /* put value on top of stack and decrement stack pointer by 1 
