@@ -29,7 +29,7 @@
  *
  */
 
-#define ENDIAN BIG
+#define CPU_BIG_ENDIAN TRUE
 
 /* enum instr_tokens are the index values for the tokens array defined in 
  * asm.c plus extra tokens which describe the parameters of the 8051 instructions set.
@@ -44,10 +44,18 @@ enum instr_tokens
     orl, pc_reg, pop, push, r0, r1, r2, r3, 
     r4, r5, r6, r7, ret, reti, rl, rlc, 
     rr, rrc, setb, sjmp, subb, swap, xch, xchd, 
-    xrl, LAST_PROC_TOKEN, rsrvd, CONST_PROC_TOKEN, 
-    addr_11, bit_addr, bit_byte, bit_no, LAST_TOKEN
+    xrl, LAST_PROC_TOKEN, rsrvd, ajdup, acdup, CONST_PROC_TOKEN, 
+    bit_addr = 0x10000 + data_8, bit_byte = 0x20000 + data_8, 
+    bit_no = 0x30000 + data_3
   };
 
+#define RESET  0x0000
+#define IRQ0   0x0003
+#define TIMER0 0x000B
+#define IRQ1   0x0013
+#define TIMER1 0x001B
+#define SERIAL 0x0023
+#define TIMER2 0x002B
 #define P0     0x80 
 #define SP     0x81 
 #define DPL    0x82 
@@ -83,4 +91,8 @@ enum instr_tokens
 #define ACC    0xE0
 #define B      0xF0 
 
+#define isRegToken(x) isRegister_table[(int) x]
+#ifndef CPU_LOCAL
+extern const int isRegister_table[];
+#endif
 #endif

@@ -29,7 +29,7 @@
 #include "front.h"
 #include "cpu.h"
 #include "proc.h"
-#include "version_mc51.h"
+#include "version_cpu.h"
 
 const char cpu_version[] = "8051 backend " CPU_VERS;
 
@@ -38,6 +38,13 @@ const char cpu_version[] = "8051 backend " CPU_VERS;
  * Inital value of array are all the register names in the SFR area
  */
 const label_type def_labels[] = {
+  { "reset",  0x0000 },
+  { "irq0",   0x0003 },
+  { "timer0", 0x000B },
+  { "irq1",   0x0013 },
+  { "timer1", 0x001B },
+  { "serial", 0x0023 },
+  { "timer2", 0x002B },
   { "p0",     0x80 }, 
   { "sp",     0x81 }, 
   { "dpl",    0x82 }, 
@@ -108,7 +115,8 @@ const int isRegister_table[LAST_PROC_TOKEN - PROC_TOKEN] =
   };
 
 /* Macro returns true when character is a 1 char token
- * Note: no intersection with isToken(x)
+ * No intersection with isToken(x)
+ * Any char listed here cannot be used in an expression in a parameter
  */
 const int isCharToken_table[ASCII_MAX] =
   {
@@ -192,7 +200,7 @@ const int cpu_instr_tkn[][INSTR_TKN_BUF] =
   { 0x1E, 1, 1, dec,   r6,       0 },
   { 0x1F, 1, 1, dec,   r7,       0 },
   { 0x20, 3, 2, jb,    bit_addr, comma,    rel_addr, 0 },
-  { 0x21, 2, 2, ajmp,  addr_11,  0 },
+  { 0x21, 2, 2, ajdup, addr_11,  0 },
   { 0x22, 1, 2, ret,   0 },
   { 0x23, 1, 1, rl,    a,        0 },
   { 0x24, 2, 1, add,   a,        comma,    pound,    data_8,   0 },
@@ -208,7 +216,7 @@ const int cpu_instr_tkn[][INSTR_TKN_BUF] =
   { 0x2E, 1, 1, add,   a,        comma,    r6,       0 },
   { 0x2F, 1, 1, add,   a,        comma,    r7,       0 },
   { 0x30, 3, 2, jnb,   bit_addr, comma,    rel_addr, 0 },
-  { 0x31, 2, 2, acall, addr_11,  0 },
+  { 0x31, 2, 2, acdup, addr_11,  0 },
   { 0x32, 1, 2, reti,  0 },
   { 0x33, 1, 1, rlc,   a,        0 },
   { 0x34, 2, 1, addc,  a,        comma,    pound,    data_8,   0 },
@@ -224,7 +232,7 @@ const int cpu_instr_tkn[][INSTR_TKN_BUF] =
   { 0x3E, 1, 1, addc,  a,        comma,    r6,       0 },
   { 0x3F, 1, 1, addc,  a,        comma,    r7,       0 },
   { 0x40, 2, 2, jc,    rel_addr, 0 },
-  { 0x41, 2, 2, ajmp,  addr_11,  0 },
+  { 0x41, 2, 2, ajdup, addr_11,  0 },
   { 0x42, 2, 1, orl,   addr_8,   comma,    a,        0 },
   { 0x43, 3, 2, orl,   addr_8,   comma,    pound,    data_8,   0 },
   { 0x44, 2, 1, orl,   a,        comma,    pound,    data_8,   0 },
@@ -240,7 +248,7 @@ const int cpu_instr_tkn[][INSTR_TKN_BUF] =
   { 0x4E, 1, 1, orl,   a,        comma,    r6,       0 },
   { 0x4F, 1, 1, orl,   a,        comma,    r7,       0 },
   { 0x50, 2, 2, jnc,   rel_addr, 0 },
-  { 0x51, 2, 2, acall, addr_11,  0 },
+  { 0x51, 2, 2, acdup, addr_11,  0 },
   { 0x52, 2, 1, anl,   addr_8,   comma,    a,        0 },
   { 0x53, 3, 2, anl,   addr_8,   comma,    pound,    data_8,   0 },
   { 0x54, 2, 1, anl,   a,        comma,    pound,    data_8,   0 },
@@ -256,7 +264,7 @@ const int cpu_instr_tkn[][INSTR_TKN_BUF] =
   { 0x5E, 1, 1, anl,   a,        comma,    r6,       0 },
   { 0x5F, 1, 1, anl,   a,        comma,    r7,       0 },
   { 0x60, 2, 2, jz,    rel_addr, 0 },
-  { 0x61, 2, 2, ajmp,  addr_11,  0 },
+  { 0x61, 2, 2, ajdup, addr_11,  0 },
   { 0x62, 2, 1, xrl,   addr_8,   comma,    a,        0 },
   { 0x63, 3, 2, xrl,   addr_8,   comma,    pound,    data_8,   0 },
   { 0x64, 2, 1, xrl,   a,        comma,    pound,    data_8,   0 },
@@ -272,7 +280,7 @@ const int cpu_instr_tkn[][INSTR_TKN_BUF] =
   { 0x6E, 1, 1, xrl,   a,        comma,    r6,       0 },
   { 0x6F, 1, 1, xrl,   a,        comma,    r7,       0 },
   { 0x70, 2, 2, jnz,   rel_addr, 0 },
-  { 0x71, 2, 2, acall, addr_11,  0 },
+  { 0x71, 2, 2, acdup, addr_11,  0 },
   { 0x72, 2, 2, orl,   c,        comma,    bit_addr, 0 },
   { 0x73, 1, 2, jmp,   a_dptr,   0 },
   { 0x74, 2, 1, mov,   a,        comma,    pound,    data_8,   0 },
@@ -288,7 +296,7 @@ const int cpu_instr_tkn[][INSTR_TKN_BUF] =
   { 0x7E, 2, 1, mov,   r6,       comma,    pound,    data_8,   0 },
   { 0x7F, 2, 1, mov,   r7,       comma,    pound,    data_8,   0 },
   { 0x80, 2, 2, sjmp,  rel_addr, 0 },
-  { 0x81, 2, 2, ajmp,  addr_11,  0 },
+  { 0x81, 2, 2, ajdup, addr_11,  0 },
   { 0x82, 2, 2, anl,   c,        comma,    bit_addr, 0 },
   { 0x83, 1, 2, movc,  a,        comma,    a_pc,     0 },
   { 0x84, 1, 4, divab, ab,       0 },
@@ -304,7 +312,7 @@ const int cpu_instr_tkn[][INSTR_TKN_BUF] =
   { 0x8E, 2, 2, mov,   addr_8,   comma,    r6,       0 },
   { 0x8F, 2, 2, mov,   addr_8,   comma,    r7,       0 },
   { 0x90, 3, 2, mov,   dptr,     comma,    pound,    data_16, 0 },
-  { 0x91, 2, 2, acall, addr_11,  0 },
+  { 0x91, 2, 2, acdup, addr_11,  0 },
   { 0x92, 2, 2, mov,   bit_addr, comma,    c,        0 },
   { 0x93, 1, 2, movc,  a,        comma,    a_dptr,   0 },
   { 0x94, 2, 1, subb,  a,        comma,    pound,    data_8,   0 },
@@ -319,8 +327,8 @@ const int cpu_instr_tkn[][INSTR_TKN_BUF] =
   { 0x9D, 1, 1, subb,  a,        comma,    r5,       0 },
   { 0x9E, 1, 1, subb,  a,        comma,    r6,       0 },
   { 0x9F, 1, 1, subb,  a,        comma,    r7,       0 },
-  { 0xA0, 2, 2, orl,   c,        comma,    slash,    bit_addr,  0 },
-  { 0xA1, 2, 2, ajmp,  addr_11,  0 },
+  { 0xA0, 2, 2, orl,   c,        comma,    slash,        bit_addr,  0 },
+  { 0xA1, 2, 2, ajdup, addr_11,  0 },
   { 0xA2, 2, 1, mov,   c,        comma,    bit_addr, 0 },
   { 0xA3, 1, 2, inc,   dptr,     0 },
   { 0xA4, 1, 4, mul,   ab,       0 },
@@ -335,8 +343,8 @@ const int cpu_instr_tkn[][INSTR_TKN_BUF] =
   { 0xAD, 2, 2, mov,   r5,       comma,    addr_8,   0 },
   { 0xAE, 2, 2, mov,   r6,       comma,    addr_8,   0 },
   { 0xAF, 2, 2, mov,   r7,       comma,    addr_8,   0 },
-  { 0xB0, 2, 2, anl,   c,        comma,    slash,    bit_addr,  0 },
-  { 0xB1, 2, 2, acall, addr_11,  0 },
+  { 0xB0, 2, 2, anl,   c,        comma,    slash,        bit_addr,  0 },
+  { 0xB1, 2, 2, acdup, addr_11,  0 },
   { 0xB2, 2, 1, cpl,   bit_addr, 0 },
   { 0xB3, 1, 1, cpl,   c,        0 },
   { 0xB4, 3, 2, cjne,  a,        comma,    pound,    data_8,   comma,    rel_addr, 0 },
@@ -352,7 +360,7 @@ const int cpu_instr_tkn[][INSTR_TKN_BUF] =
   { 0xBE, 3, 2, cjne,  r6,       comma,    pound,    data_8,   comma,    rel_addr, 0 },
   { 0xBF, 3, 2, cjne,  r7,       comma,    pound,    data_8,   comma,    rel_addr, 0 },
   { 0xC0, 2, 2, push,  addr_8,   0 },
-  { 0xC1, 2, 2, ajmp,  addr_11,  0 },
+  { 0xC1, 2, 2, ajdup, addr_11,  0 },
   { 0xC2, 2, 1, clr,   bit_addr, 0 },
   { 0xC3, 1, 1, clr,   c,        0 },
   { 0xC4, 1, 1, swap,  a,        0 },
@@ -368,7 +376,7 @@ const int cpu_instr_tkn[][INSTR_TKN_BUF] =
   { 0xCE, 1, 1, xch,   a,        comma,    r6,       0 },
   { 0xCF, 1, 1, xch,   a,        comma,    r7,       0 },
   { 0xD0, 2, 2, pop,   addr_8,   0 },
-  { 0xD1, 2, 2, acall, addr_11,  0 },
+  { 0xD1, 2, 2, acdup, addr_11,  0 },
   { 0xD2, 2, 1, setb,  bit_addr, 0 },
   { 0xD3, 1, 1, setb,  c,        0 },
   { 0xD4, 1, 1, da,    a,        0 },
@@ -384,7 +392,7 @@ const int cpu_instr_tkn[][INSTR_TKN_BUF] =
   { 0xDE, 2, 2, djnz,  r6,       comma,    rel_addr, 0 },
   { 0xDF, 2, 2, djnz,  r7,       comma,    rel_addr, 0 },
   { 0xE0, 1, 2, movx,  a,        comma,    at_dptr,  0 },
-  { 0xE1, 2, 2, ajmp,  addr_11,  0 },
+  { 0xE1, 2, 2, ajdup, addr_11,  0 },
   { 0xE2, 1, 2, movx,  a,        comma,    at_r0,    0 },
   { 0xE3, 1, 2, movx,  a,        comma,    at_r1,    0 },
   { 0xE4, 1, 1, clr,   a,        0 },
@@ -400,7 +408,7 @@ const int cpu_instr_tkn[][INSTR_TKN_BUF] =
   { 0xEE, 1, 1, mov,   a,        comma,    r6,       0 },
   { 0xEF, 1, 1, mov,   a,        comma,    r7,       0 },
   { 0xF0, 1, 2, movx,  at_dptr,  comma,    a,        0 },
-  { 0xF1, 2, 2, acall, addr_11,  0 },
+  { 0xF1, 2, 2, acdup, addr_11,  0 },
   { 0xF2, 1, 2, movx,  at_r0,    comma,    a,        0 },
   { 0xF3, 1, 2, movx,  at_r1,    comma,    a,        0 },
   { 0xF4, 1, 1, cpl,   a,        0 },
@@ -425,9 +433,9 @@ const int cpu_instr_tkn[][INSTR_TKN_BUF] =
   { 0x72, 2, 2, orl,   c,        comma,    bit_byte, dot,      bit_no,   0 },
   { 0x82, 2, 2, anl,   c,        comma,    bit_byte, dot,      bit_no,   0 },
   { 0x92, 2, 2, mov,   bit_byte, dot,      bit_no,   comma,    c,        0 },
-  { 0xA0, 2, 2, orl,   c,        comma,    slash,    bit_byte, dot,      bit_no,   0 },
+  { 0xA0, 2, 2, orl,   c,        comma,    slash,        bit_byte, dot,      bit_no,   0 },
   { 0xA2, 2, 1, mov,   c,        comma,    bit_byte, dot,      bit_no,   0 },
-  { 0xB0, 2, 2, anl,   c,        comma,    slash,    bit_byte, dot,      bit_no,   0 },
+  { 0xB0, 2, 2, anl,   c,        comma,    slash,        bit_byte, dot,      bit_no,   0 },
   { 0xB2, 2, 1, cpl,   bit_byte, dot,      bit_no,   0 },
   { 0xC2, 2, 1, clr,   bit_byte, dot,      bit_no,   0 },
   { 0xD2, 2, 1, setb,  bit_byte, dot,      bit_no,   0 },
@@ -479,18 +487,14 @@ static const int bitRange_table[BYTE_MAX] =
  */
 enum cpuErrNo 
   {
-    addr11_range = LAST_ASM_ERR, bit_range, bitno_range, no_bitbyte, 
-    bit_syntax, direct_range, addr16_range, LAST_CPU_ERRNO
+    no_bitbyte = LAST_ASM_ERR,
+    bit_syntax, LAST_CPU_ERRNO
   };
 
 const str_storage cpuErrMsg[LAST_CPU_ERRNO - LAST_ASM_ERR] = 
   {
-    "11-bit address out of range",
-    "Bit address out of range", 
-    "Bit number out of range",
     "Non bit addressable byte",
-    "Bad bit address syntax", 
-    "Direct address out of range",
+    "Bad bit address syntax"
   };
 
 /* The function isInstr distinguishes tokens that represent 8051 instructions
@@ -514,10 +518,7 @@ int handleInstr(const int *theInstr, int *tkn)
 
   if (theInstr[INSTR_TKN_OP] == 0x85) /* change order of mov addr_8, addr_8 */
     {
-      if (tkn[5]>=BYTE_MAX || tkn[5]<0) longjmp(err, direct_range);
       memory[++pc] = tkn[5];
-
-      if (tkn[2]>=BYTE_MAX || tkn[2]<0) longjmp(err, direct_range);
       memory[++pc] = tkn[2];
       ++pc;
       return TRUE;
@@ -530,41 +531,33 @@ int handleInstr(const int *theInstr, int *tkn)
  */
 int handleTkn(const int theInstrTkn, int *tkn, int *tkn_pos)
 {
-  int addr, handleFlag = TRUE;
+  int n, addr, handleFlag = TRUE;
 
   switch (theInstrTkn)
     {
-    case bit_addr: /* bit addr is between 0 and 0xFF */
-      *tkn_pos += 2;
-      if (tkn[*tkn_pos]>=BYTE_MAX || tkn[*tkn_pos]<0) longjmp(err, bit_range);
-      memory[pc++] = tkn[*tkn_pos];
-      break;
     case bit_byte: /* bit_byte is a bit addressable byte. Check this */
       *tkn_pos += 2;
       if (bitRange(tkn[*tkn_pos]) == UNDEF) longjmp(err, no_bitbyte);
+      memory[pc] = tkn[*tkn_pos];
       break;
-    case dot: /* dot tokens means add bit byte to bit no afterwards */
+    case dot:  /* dot tokens means add bit byte to bit no afterwards */
       ++*tkn_pos;
-      if (tkn[*tkn_pos-2] != number || tkn[*tkn_pos+1] != number)
-	longjmp(err, bit_syntax);
-      memory[pc++] = tkn[*tkn_pos-1] + tkn[*tkn_pos+2];
-      break;
-    case bit_no: /* just range check */
+      break; 
+    case bit_no:
       *tkn_pos += 2;
-      if (tkn[*tkn_pos]<0 || tkn[*tkn_pos]>7) longjmp(err, bitno_range);
+      if (tkn[*tkn_pos] > 7 || tkn[*tkn_pos] < 0) 
+	longjmp(err, addr3_range);
+      memory[pc++] += tkn[*tkn_pos];
       break;
     case addr_11: 
       *tkn_pos += 2;
+      if (tkn[*tkn_pos] > ((1<<11) - 1) || tkn[*tkn_pos] < 0) 
+	longjmp(err, addr1_range + n);
 
       /* Generate 11 bit addr from upper 5 bits of pc and 11 bits of 
        * target address given by assembly line.
        */
       addr = (pc & 0xF800) + (tkn[*tkn_pos] & 0x7FF);
-
-      /* If generated addr doesn't match actuall address out of range.
-       */
-      if (tkn[*tkn_pos] != addr) longjmp(err, addr11_range);
-
       memory[pc-1] |= (tkn[*tkn_pos] & 0x700)/8;
       memory[pc++] = getLow(tkn[*tkn_pos]);
       break;
@@ -580,7 +573,7 @@ int handleTkn(const int theInstrTkn, int *tkn, int *tkn_pos)
  */
 int isConstProcTkn(int t)
 {
-  return (t>CONST_PROC_TOKEN && t<LAST_TOKEN);
+  return (t>CONST_PROC_TOKEN);
 }
 
 /* isJSR will return TRUE is opcode is a subroutine call instruction
@@ -588,5 +581,5 @@ int isConstProcTkn(int t)
 int isJSR(int opcode)
 {
   int t = cpu_instr_tkn[opcode][INSTR_TKN_INSTR];
-  return (t == acall || t == lcall);
+  return (t == acall || t == acdup || t == lcall);
 }

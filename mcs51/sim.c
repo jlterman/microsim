@@ -21,6 +21,7 @@
 
 #include <stdio.h>
 #include <stdlib.h>
+#include <string.h>
 #include <assert.h>
 
 #define SIM_CPU_LOCAL
@@ -87,8 +88,18 @@ void reset(void)
   int i;
   for (i = 0; i<8; ++i) reg[i] = ram + i;
   ram[P0] = ram[P1] = ram[P2] = ram[P3] = BYTE_MASK;
-  pc = 0;
+  pc = RESET;
   ram[SP] = 7;
+}
+
+int irq(int i)
+{
+  if (i<0 || i>1) return UNDEF;
+  if (!(ram[IE] & (i*2))) return FALSE;
+  pushStack(getLow(pc));
+  pushStack(getHigh(pc));
+  pc = (i) ? IRQ1 : IRQ0;
+  return TRUE;
 }
 
 /* add value to acc with the proper setting of status registers.
@@ -137,43 +148,44 @@ static void updatePSW()
   setPSW(p & 1, prty);
 }
 
-/* Get param will calculate the parameters from the cpu_instr_tkn entry
- * for opcode op. codeptr is the current byte in the opcode, index the
- * current entry in the table being scanned.
+/* Get param will calculate the parameters from the cpu_instr_tkn[op] entry
+ * *index points to the first parameter of the opcode, and *code points
+ * to the next byte in code memory after the opcode
  * 
  * if reg or memory parameter found, *param is set to address of memory or reg
  * if regular addr found, *addr set to this value
  * if bit addr found, *param will have addr of byte, and bparam has bit num
  */
-static int getParam(int op, int *index, int *codeptr, int **param, int *bparam, int *addr)
+static int getParam(int op, const int **index, int **code, int **param, int *bparam, int *addr)
 {
-  int code = memory[*codeptr], inv = -1, *p = NULL, bp = UNDEF,
-      t = cpu_instr_tkn[op][(*index)++];
+  int inv = 1, *p = NULL, bp = UNDEF;
 
-  switch (t)
+  switch (**index)
     {
     case 0:
       return FALSE;
       break;
     case addr_11: /* mask top 3 bits of opcode and make a10, a9, a8 */
-      *addr = ((op & 0xE0)<<3) + code;
+      *addr = ((op & 0xE0)<<3) + **code;
       break;
     case addr_16:
-      *addr = code*BYTE_MAX +  memory[++(*codeptr)];
+      *addr = **code*BYTE_MAX +  *++*code;
       break;
-    case addr_8:
+    case addr_8: /* addr_8 is either or a src or a destination */
+      p = ram + **code;
+      break;
     case rel_addr:
-      *addr += code;
+      *addr = **code;
       break;      
     case pound: /* code in memory is the source of the move */
-      p = memory + *codeptr;
+      p = *code;
       ++*index;
       break;
     case slash: /* negative bit addr will indicate inverse bit */
-      ++(*index);
+      ++*index;
       inv = -1;
     case bit_addr:
-      bitAddr(code, p, bp);
+      bitAddr(**code, p, bp);
       bp *= inv;
       break;
     case a_dptr:
@@ -188,9 +200,9 @@ static int getParam(int op, int *index, int *codeptr, int **param, int *bparam, 
     case at_r0:
     case at_r1:
       if (cpu_instr_tkn[op][INSTR_TKN_INSTR]==movx) 
-	p = xram + ram[P2]*BYTE_MAX + *reg[t - at_r0];
+	p = xram + ram[P2]*BYTE_MAX + *reg[**index - at_r0];
       else
-	p = &atram(*reg[t - at_r0]);
+	p = &atram(*reg[**index - at_r0]);
       break;
     case a:
       p = ram + ACC;
@@ -203,7 +215,7 @@ static int getParam(int op, int *index, int *codeptr, int **param, int *bparam, 
       break;
     case r0: case r1: case r2: case r3:
     case r4: case r5: case r6: case r7:
-      p = reg[t - r0];
+      p = reg[**index - r0];
       break;
     default:
       assert(TRUE);
@@ -211,8 +223,7 @@ static int getParam(int op, int *index, int *codeptr, int **param, int *bparam, 
     }
   /* if token is constant, it will have be encoded in memory, adv codeptr
    */
-  if (t<PROC_TOKEN || t>LAST_PROC_TOKEN) ++(*codeptr);
-  ++(*index);
+  if (isConstToken(**index)) ++(*code); *index += 2;
   if (bparam) *bparam = bp; if (param) *param = p; /* don't assign if NULL */
   return TRUE;
 }
@@ -222,9 +233,10 @@ static int getParam(int op, int *index, int *codeptr, int **param, int *bparam, 
  */
 void step(void)
 {
-  int *src = NULL, *dst = NULL, bsrc = UNDEF, bdst = UNDEF, addr = 0,
-      op = memory[pc], index = INSTR_TKN_PARAM, codeptr = pc + 1,
-      opcode = cpu_instr_tkn[op][INSTR_TKN_INSTR], x, y;
+  int x, y, *src = NULL, *dst = NULL, bsrc = UNDEF, bdst = UNDEF, addr = 0,
+      op = memory[pc], opcode = cpu_instr_tkn[op][INSTR_TKN_INSTR],
+      *code = memory + pc + 1;
+  const int *index = cpu_instr_tkn[op] + INSTR_TKN_PARAM;
   
   /* value of pc during instr execution is pc of next instr
    * return immediately if pc has overflowed (let sim register error)
@@ -237,19 +249,19 @@ void step(void)
    * 1st param dest reg or memory, 2nd param source or addr, 
    * 3rd param always address
    */
-  getParam(op, &index, &codeptr, &dst, &bdst, &addr) &&
-  getParam(op, &index, &codeptr, &src, &bsrc, &addr) &&
-  getParam(op, &index, &codeptr, NULL, NULL,  &addr);
+  getParam(op, &index, &code, &dst, &bdst, &addr) &&
+  getParam(op, &index, &code, &src, &bsrc, &addr) &&
+  getParam(op, &index, &code, NULL, NULL,  &addr);
 
   /* calls to getparam will set dst, src registers or memory locations
    * plus any address. switch statment acts on these values
    */
   switch (opcode)
     {
-    case acall: /* acall addr_11 */
+    case acdup: case acall: /* acall addr_11 */
       pushStack(getLow(pc));
       pushStack(getHigh(pc));
-    case ajmp: /* ajmp addr_11 */
+    case ajdup: case ajmp: /* ajmp addr_11 */
       pc = (pc & 0xF800) + addr;
       break;
     case add:  /* add  dst, src */
@@ -420,23 +432,32 @@ void step(void)
 /* getRegister will return the address to the name of the register given it
  * if *bit not UNDEF, register is one bit in length
  */
-int *getRegister(str_storage name, int *bit)
+int *getRegister(str_storage name, int *bit, int* bytes)
 {
-  int index;
+  int index, addr;
   const str_storage *ret = bsearch(name, tokens, tokens_length, sizeof(str_storage), &cmpstr);
-  if (!ret) return NULL;
-  *bit = UNDEF;
-  index = ret - tokens + PROC_TOKEN;
-  switch (index)
+  if (!ret)
     {
-    case dptr: return ram + DPL + BYTE_MAX*ram[DPH]; break;
-    case pc_reg: return &pc;   break;
-    case r0: case r1: case r2: case r3:
-    case r4: case r5: case r6: case r7: 
-      return reg[index-r0];    break;
-    case a:  return ram + ACC; break;
-    case c:  *bit = carry;     return ram + PSW;   break;
-    default: return NULL;      break;
+      *bytes = 1; *bit = UNDEF; index = 0;
+      while (def_labels[index].value != UNDEF && strcmp(name, def_labels[index].name)) ++index;
+      addr = def_labels[index].value;
+      return (addr != UNDEF && addr > 0x7F && addr < 0x100) ? ram + addr : NULL;
+    }
+  else
+    {
+      *bit = UNDEF; *bytes = isRegister_table[ret - tokens];
+      index = ret - tokens + PROC_TOKEN;
+      switch (index)
+	{
+	case dptr: return ram + DPL + BYTE_MAX*ram[DPH]; break;
+	case pc_reg: return &pc;   break;
+	case r0: case r1: case r2: case r3:
+	case r4: case r5: case r6: case r7: 
+	  return reg[index-r0];    break;
+	case a:  return ram + ACC; break;
+	case c:  *bit = carry;     return ram + PSW;   break;
+	default: return NULL;      break;
+	}
     }
 }
 
@@ -449,9 +470,13 @@ int *getMemory(int addr, char m)
   if (m == '\0') m = 'c';
   switch (m)
     {
-    case 'i': 
+    case 'd': 
       if (addr>=BYTE_MAX) return NULL;
       mptr = ram + addr;
+      break;
+    case 'i': 
+      if (addr>=BYTE_MAX) return NULL;
+      mptr = &atram(addr);
       break;
     case 'x':
       if (addr>=MEMORY_MAX) return NULL;
