@@ -25,6 +25,10 @@
 #include "version.h"
 #include "asm.h"
 
+#ifdef __WIN32__
+#include <io.h>
+#endif
+
 static FILE *bufd;                  /* file descripter of file being read for buffer */
 static char buf_store[BUF_SIZE];
 
