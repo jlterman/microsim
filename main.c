@@ -1010,7 +1010,7 @@ static void printSimHelp(void)
 /* load file filename into lines array
  */
 static void loadFile(char *filename)
-{+
+{
   static int size_Lines = 0;          /* max no. of lines in **lines */
   static int num_Lines = 0;           /* no of lines stored */  
   int l;
