@@ -48,7 +48,7 @@ extern const str_storage simErrMsg[];
 #ifndef SIM_LOCAL
 extern
 #endif
-int *getMemExpr(char*);
+int *getMemExpr(char*, int*, char*);
 
 /* set a temporary break for next command
  */

@@ -8,7 +8,7 @@ clean:
 
 %.obj.out: %.obj; @{ if diff --strip-trailing-cr $< $(<).ref ; then echo $< succeeded; else echo $@:1 '******' $@ failed ; fi } > $@ ; cat $@
 
-%.run: %.sim; ../sim $*.asm < $< > $@
+%.run: %.sim; ../sim -q $*.asm < $< > $@
 
 %.run.out: %.run; @{ if diff --strip-trailing-cr $< $(<).ref ; then echo $< succeeded; else echo $@:1 '******' $@ failed ; fi } > $@ ; cat $@
 

@@ -90,6 +90,11 @@ void reset(void)
   ram[P0] = ram[P1] = ram[P2] = ram[P3] = BYTE_MASK;
   pc = RESET;
   ram[SP] = 7;
+  for (i = 0; i<128; ++i)
+    {
+      ram[i] = 0;
+      ram[i + 256] = 0;
+    }
 }
 
 int irq(int i)
@@ -467,7 +472,7 @@ int *getRegister(str_storage name, int *bit, int* bytes)
 int *getMemory(int addr, char m)
 {
   int b, *mptr = NULL;
-  if (m == '\0') m = 'c';
+  if (m == '\0') m = 'i';
   switch (m)
     {
     case 'd': 

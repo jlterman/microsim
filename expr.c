@@ -377,8 +377,8 @@ static int findBinaryOp(str_storage expr)
  */
 int getExpr(char *expr)
 {
-  int pos, start = 0, lvalue, rvalue, value, *mem;
-  char op;
+  int pos, start = 0, lvalue, rvalue, value, addr, *mem;
+  char op, c;
 
   /* check if expression begins with unitary operator.
    * if so, skip over them
@@ -473,7 +473,7 @@ int getExpr(char *expr)
 	}
       else if ((expr[start]=='$'|| expr[start]=='@'))
 	{
-	  if (!(mem = getMemExpr(expr + start)))
+	  if (!(mem = getMemExpr(expr + start, &addr, &c)))
 	    longjmp(*exprErr, (expr[start]) ? no_mem : bad_reg);
 	  value = *mem;
 	}

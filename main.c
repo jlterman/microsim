@@ -26,6 +26,7 @@
 #include <setjmp.h>
 #include <assert.h>
 #include <signal.h>
+#include <unistd.h>
 
 #ifdef __WIN32__
 #include <io.h>
@@ -121,9 +122,9 @@ static int nchar = 0;
  */
 enum simCmd
   {
-    brkln, brk_tmp, clr_brk, clr_dsp, go, intr, list_brk, list_dsp, mem,
+    brkln, brk_tmp, clr_brk, clr_dsp, go, intr, list_brk, list_dsp,
     next,  print, pr_bin, pr_dec, pr_line, pr_led, pr_reg, pr_hex, 
-    quit, resetSim, resume, stpln, trace, lastCmd
+    quit, resume, resetSim, stpln, trace, lastCmd
   };
 
 /* array of simulator commands strings
@@ -131,16 +132,16 @@ enum simCmd
 #define NUM_SIM 26
 static const str_storage simCmdStr[] =
   {
-    "b", "break",    "bt", "cb", "cd",    "g",  "i",    "lb", "ld",
-    "m",     "n",  "next",  "p", "pb",   "pd", "pl",  "pled", "pr",
-    "px",    "q", "reset",  "r",  "s", "step",  "t", "trace"
+    "b", "break", "bt",    "cb", "cd",    "g",    "i", "lb", "ld",
+    "n",  "next",  "p",    "pb", "pd",   "pl", "pled", "pr",
+    "px",    "q",  "r", "reset",  "s", "step",    "t", "trace"
   };
 
 static const int simCmd[] =
   {
     brkln, brkln, brk_tmp, clr_brk, clr_dsp, go, intr, list_brk, list_dsp,
-    mem, next, next, print, pr_bin, pr_dec, pr_line, pr_led, pr_reg,
-    pr_hex, quit, resetSim, resume, stpln, stpln, trace, trace
+    next, next, print, pr_bin, pr_dec, pr_line, pr_led, pr_reg,
+    pr_hex, quit, resume, resetSim, stpln, stpln, trace, trace
   };
 
 /* simulator help by letter
@@ -148,36 +149,39 @@ static const int simCmd[] =
 static const str_storage sim_help[26] = 
   {
     0, /* a help */
-    "b  [addr] [if expr] : break at addr (pc if not given) if expr is true\n"
-    "bt [addr] [if expr] : break will be cleared when hit\n",
+    "b  [line/$addr] [if expr] : break at line# or $addr (pc if not given) if expr is true\n"
+    "bt [line/$addr] [if expr] : break will be cleared when hit\n",
     "cb [list] : clear break by number, or all if no params\n"
     "cd [list] : clear display by number or all if no params\n",
     "command will display corresponding print command after each\n"
     "execution of an instruction\n",
     0, 0, /* e, f help */
-    "g [addr] : go to addr and execute (current pc if not given)\n",
-    "Simulator help by letter. Type (letter)h for more details\n\n"
-    "Types of parameters:"
-    "addr     - line number or with $ memory address\n"
-    "$addr    - value of memory stored at the address\n"
-    "expr     - algebraic expression evaluated each time it is used\n"
-    "list     - list of numbers or expressions seperated by a space\n"
-    "[...]    - optional parameter\n"
-    "[repeat] - optional value to run cmd repeat times\n\n",
+    "g [line/$addr] : go to line# or $addr and execute (current pc if not given)\n",
+    "Simulator help by letter. Type h(letter) for more details\n\n"
+    "Types of parameters:\n"
+    "line/$addr - line number or with $ memory address\n"
+    "addr       - address given by number or value of label\n"
+    "$addr      - indirect address\n"
+    "@          - get direct address of register\n"
+    "expr       - algebraic expression evaluated each time it is used\n"
+    "list       - list of numbers or expressions seperated by a space\n"
+    "[...]      - optional parameter\n"
+    "[repeat]   - optional value to run cmd repeat times\n\n",
     "i expr : request interrupt number expr\n",
     0, 0, /* j, k help */
-    "lb [expr] : list break number (expr), at addr or all if no param\n"
-    "ld [expr] : list display number (expr) or all if no param given\n",
-    "m addr list : assign value(s) to memory location addr\n",
+    "lb [list] : list break number (expr), at addr or all if no param\n"
+    "ld [list] : list display number (expr) or all if no param given\n",
+    "m [@reg/addr:c] list : assign value(s) to memory or register addr\n"
+    "m(c) addr list       : assign value(s) to memory location addr:c\n",
     "n [repeat]  : execute next instr, but skip over subroutine calls\n",
     0, /* o help */
-    "p[d] list          : print value of expression in decimal\n"
-    "pb   list          : print value of expression in binary\n"
-    "pl   [addr]        : print line at addr (pc if not given)\n"
-    "pm[c] expr [expr]  : print memory segment at address expr:c\n"
-    "pled list          : print value of expression as LED\n"
-    "pr   list          : print list of registers (all if no params)\n"
-    "px   list          : print expression in hexadecimal\n",
+    "p[d] list             : print value of expression in decimal\n"
+    "pb   list             : print value of expression in binary\n"
+    "pl   [list]           : print asm line at the given line numbers\n"
+    "pm[c] addr [length]   : print memory at addr:c\n"
+    "pled list             : print value of expression as LED\n"
+    "pr   list             : print list of registers (all if no params)\n"
+    "px   list             : print expression in hexadecimal\n",
     "q  : quit simmulator\n",
     "r [repeat] : resume execution\n"
     "reset      : reset state of simulator\n",
@@ -379,7 +383,7 @@ static void doBrk(int tmpFlag)
   if ((e = getStrParam(FALSE, FALSE)))
     {
       if (strcmp(e, "if")) longjmp(err, bad_param);
-      e = getStrParam(TRUE, TRUE);
+      e = strdup(getStrParam(TRUE, TRUE));
     }
   line = asm_Lines[addr];
   brk  = addBrk(tmpFlag, addr, e);
@@ -390,8 +394,8 @@ static void doBrk(int tmpFlag)
  */
 static void doClrBrk()
 {
-  int addr = getNumParam(FALSE);
-  if (addr == UNDEF && answer("Clear all breaks"))
+  int brk = getNumParam(FALSE);
+  if (brk == UNDEF && answer("Clear all breaks"))
     {
       delBrk(UNDEF); return;
     }
@@ -399,11 +403,9 @@ static void doClrBrk()
   do
     { 
       if (nchar) { printf(newLine); nchar = 0; }
-      if (!printBreak(stdout, addr)) 
-	printf("Warning: No such break at address %X\n", addr);
-      delBrk(-memory[addr] - 1);
+      delBrk(brk);
     }
-  while ((addr = getNumParam(FALSE)));
+  while ((brk = getNumParam(FALSE)) != UNDEF);
 }
 
 /* if no paramter, ask to clear all display commands
@@ -516,12 +518,12 @@ static void doIRQ()
  */
 static void doListBrk()
 {
-  int addr = getNumParam(FALSE);
+  int brk = getNumParam(FALSE);
   do
     {
-      printBreak(stdout, addr);
+      printBreak(stdout, brk);
     }
-  while ((addr = getNumParam(FALSE)) != UNDEF);
+  while ((brk = getNumParam(FALSE)) != UNDEF);
 }
 
 /* print the display commands
@@ -552,18 +554,33 @@ static void doListDsp()
 /* doMem will set the memory address with the values given it.
  * if more than one value,  they are assigned to succeeding memory address
  */
-static void doMem()
+static void doMem(char c)
 {
-  int *addr = getMemExpr(getStrParam(TRUE, FALSE)), mem = getNumParam(FALSE);
-  
-  if (mem == UNDEF) longjmp(err, miss_param);
+  char *expr;
+  int *mem, addr, value;
+
+  if (c) 
+    {
+      addr = getNumParam(FALSE);
+      if (addr  == UNDEF) longjmp(err, miss_param);
+      mem = getMemory(addr, c);
+    }
+  else
+    {
+      expr = getStrParam(TRUE, FALSE);
+      mem = getMemExpr(expr, &addr, &c);
+    }
+
+  value = getNumParam(FALSE);
+  if (value == UNDEF) longjmp(err, miss_param);
   do
     {
-      if (mem<SGN_BYTE_MIN || mem>=BYTE_MAX)
+      if (value<SGN_BYTE_MIN || value>=BYTE_MAX)
 	printf("Warning: %s, masked to 8 bits\n", cmdErrMsg[out_range - LAST_SIM_ERR]);
-      *addr = mem & BYTE_MASK; /* if negative, mask out leads 1's */
+      *mem = value & BYTE_MASK; /* if negative, mask out leads 1's */
+      ++mem;
     }
-  while ((mem = getNumParam(FALSE)) != UNDEF);
+  while ((value = getNumParam(FALSE)) != UNDEF);
 }
 
 /* doNext will do a step on next instruction. If it is a jump to 
@@ -585,10 +602,10 @@ static void doNext()
 	  brkAddr = lines[line - 1].pc;
 	  if (memory[lines[line].pc]>0) setNextBrk(brkAddr);
 	  addr = run(pc, FALSE); 
+	  if (addr != brkAddr) dsp_brk(asm_Lines[addr]);
 	}
       else
 	stepOne();
-      if (addr != brkAddr) dsp_brk(asm_Lines[addr]);
       display();
     }
 
@@ -620,7 +637,7 @@ static void doPrintExpr(int base)
 	case 2: 
 	  putchar(' '); ++nchar;
 	  if (!value) { putchar('0'); ++nchar; }
-	  bit=1<<31; while (!(value&bit)) bit /= 2;
+	  bit=1<<30; while (!(value&bit)) bit /= 2;
 	  for (b = bit; b; b /= 2) 
 	    { 
 	      (value&b) ? putchar('1') : putchar('0'); ++nchar;
@@ -641,16 +658,15 @@ static void doPrintExpr(int base)
 static void doPrintLine()
 {
   char *line;
-  int lineNo, addr = getAddrParam(FALSE);
-  if (addr == UNDEF) longjmp(err, bad_param);
+  int lineNo = getNumParam(FALSE);
+  if (lineNo == UNDEF) lineNo = asm_Lines[pc];
   do
     {
       if (nchar) { printf(newLine); nchar = 0; }
-      lineNo = asm_Lines[addr];
       line = lines[lineNo - 1].line;
-      nchar = printf("%5d %04X: %s", lineNo, addr, line);
+      nchar = printf("%5d %04X: %s", lineNo, lines[lineNo - 1].pc, lines[lineNo - 1].line);
     }
-  while ((addr = getAddrParam(FALSE)) != pc);
+  while ((lineNo = getNumParam(FALSE)) != UNDEF);
 }
 
 /* print each number as if displayed by LED
@@ -663,9 +679,9 @@ static void doPrintLED()
     {
       while (n<16 && (bits[n++] = getNumParam(FALSE)) != UNDEF);
 
-      n = 0;
       for (i = 1; i<8; ++i)
 	{
+	  n = 0;
 	  while (n<16 && (b = bits[n++]) != UNDEF)
 	    {
 	      switch (i)
@@ -695,13 +711,26 @@ static void doPrintLED()
  */
 static void doPrintMemory(char c)
 {
-  char d = (c) ? c : ' ';
-  int *m, i, addr = getNumParam(FALSE), length = getNumParam(TRUE);
-  if (addr == UNDEF) longjmp(err, miss_param);
+  int addr, length;
+  char *expr, d = (c) ? c : ' ';
+  int *mem, i;
+
+  if (c) 
+    {
+      addr = getNumParam(FALSE);
+      if (addr  == UNDEF) longjmp(err, miss_param);
+      mem = getMemory(addr, c);
+    }
+  else
+    {
+      expr = getStrParam(TRUE, FALSE);
+      mem = getMemExpr(expr, &addr, &c);
+    }
+
+  length = getNumParam(TRUE);
   if (length == UNDEF) length = 1;
   
-  m = getMemory(addr, c);
-  nchar += printf("%04X:%c %02X", addr, d, *m);
+  nchar += printf("%04X:%c %02X", addr, d, *mem);
   for (i = 1; i<length; ++i)
     {
       if (!((addr + i)%16)) nchar = printf("%s%04X:%c", newLine, addr+i, d);
@@ -773,7 +802,7 @@ static void doPrintReg()
 	      if (!(reg = getRegister(tokens[t], &bit, &bytes))) continue;
 	      if (nchar>LNLNGTH) { printf(newLine); nchar = 0; }
 	      fmt[6] = (bit == UNDEF) ? '0' + 2*bytes : '1';
-	      nchar += printf(fmt, tokens[t], *reg);
+	      nchar += printf(fmt, tokens[t], (bit == UNDEF) ? *reg : (*reg&bit)>0);
 	    }
 	}
       else
@@ -781,7 +810,7 @@ static void doPrintReg()
 	  if (nchar>LNLNGTH) { printf(newLine); nchar = 0; }
 	  if (!(reg = getRegister(p, &bit, &bytes))) longjmp(err, no_reg);
 	  fmt[6] = (bit == UNDEF) ? '0' + 2*bytes : '1';
-	  nchar += printf(fmt, p, *reg);
+	  nchar += printf(fmt, p, (bit == UNDEF) ? *reg : (*reg&bit)>0);
 	}
     }  while ((p = getStrParam(FALSE, FALSE)));
 }
@@ -809,7 +838,6 @@ static void doCmd(str_storage b)
     case intr:     doIRQ();            break;
     case list_brk: doListBrk();        break;
     case list_dsp: doListDsp();        break;
-    case mem:      doMem();            break;
     case next:     doNext();           break;
     case pr_dec:
     case print:    doPrintExpr(10);    break;
@@ -836,7 +864,10 @@ static void doCmd(str_storage b)
 	  else if (sim_help[t[1]-'a'])
 	    printf(sim_help[t[1]-'a']);
 	  else
-	    longjmp(err, no_cmd);
+	    printf("No help for %c\n", t[1]);
+	  break;
+	case 'm':
+	  doMem(t[1]);
 	  break;
 	case 'p': 
 	  if (t[1] == 'm') 
@@ -898,7 +929,8 @@ static FILE *safeOpen(char* filename, char* mode)
  */
 static void printSimHelp(void)
 {
-  printf("sim file.asm\n");
+  printf("sim [-q] file.asm\n");
+  printf("    -q -- don't print out version info on startup\n");
   printf("sim -h -- print this message\n");
   printf("sim -V -- print simulator version and build date\n");
   exit(1);
@@ -1009,13 +1041,17 @@ void myhandler(int signum)
  */
 int main_sim(int argc, char *argv[])
 {
-  int c, errNo, i, l, numErr = 0;
+  int c, errNo, i, l, numErr = 0, silent = FALSE;
   unsigned int m;
   char *line, *temp = getTmpFile("sim");
   if (argc<2) printSimHelp();
-  if (!strcmp(argv[1], "-fullname")) argv[1] = "-f";
 
-  while ((c = getopt(argc, argv, "fVh")) != EOF)
+  for (i = 1; i < argc; ++i) {
+    if (!strcmp(argv[i], "-fullname")) argv[i] = "-f";
+    if (!strcmp(argv[i], "-cd")) argv[i] = "-d";
+  }
+
+  while ((c = getopt(argc, argv, "qfVhd:")) != EOF)
     {
       switch (c)
 	{
@@ -1023,8 +1059,14 @@ int main_sim(int argc, char *argv[])
 	  printf(sim_version); printf(cpu_version);
 	  exit(0);
 	  break;
+	case 'd':
+	  chdir(optarg);
+	  break;
 	case 'f':
 	  emacs = TRUE;
+	  break;
+	case 'q':
+	  silent = TRUE;
 	  break;
 	case 'h':
 	default:
@@ -1062,6 +1104,12 @@ int main_sim(int argc, char *argv[])
 
   run_sim = TRUE;
   reset();
+  if (!silent) 
+    {
+      printf(sim_version); 
+      printf(cpu_version);
+      printf("\n");
+    }
   printf("Simulating file %s starting at line %d\n", filename, asm_Lines[pc]);
   while (!done)
     {
@@ -1109,7 +1157,7 @@ static char *newSuffix(char *oldname, char *newsuffix)
  */
 static void printAsmHelp(void)
 {
-  printf("asm [-vVsLl] [-o file.obj] file1 file2 ...\n");
+  printf("asm [-vVqLl] [-o file.obj] file1 file2 ...\n");
   exit(1);
 }
 
@@ -1128,7 +1176,7 @@ int main_asm(int argc, char *argv[])
   char temp[] = "asmXXXXXX";
 
   if (argc<2) printAsmHelp();
-  while ((c = getopt(argc, argv, "svhlVLo:")) != EOF)
+  while ((c = getopt(argc, argv, "qvhlVLo:")) != EOF)
     {
       switch (c)
 	{
@@ -1148,7 +1196,7 @@ int main_asm(int argc, char *argv[])
 	case 'v':
 	  verbose = TRUE;
 	  break;
-	case 's':
+	case 'q':
 	  silent = TRUE;
 	  break;
 	default:

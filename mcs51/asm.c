@@ -31,7 +31,7 @@
 #include "proc.h"
 #include "version_cpu.h"
 
-const char cpu_version[] = "8051 backend " CPU_VERS;
+const char cpu_version[] = "8051 backend " CPU_VERS "\n";
 
 /* The array labels contains a name, value pair for each defined labels. Address labels and
  * equ labels currently go into the same name space. Array is limited and not ordered
@@ -538,7 +538,7 @@ int handleTkn(const int theInstrTkn, int *tkn, int *tkn_pos)
     case bit_byte: /* bit_byte is a bit addressable byte. Check this */
       *tkn_pos += 2;
       if (bitRange(tkn[*tkn_pos]) == UNDEF) longjmp(err, no_bitbyte);
-      memory[pc] = tkn[*tkn_pos];
+      memory[pc] = (tkn[*tkn_pos] < 128) ? (tkn[*tkn_pos] - 32)*8 : tkn[*tkn_pos];
       break;
     case dot:  /* dot tokens means add bit byte to bit no afterwards */
       ++*tkn_pos;

@@ -68,7 +68,7 @@ void printErr(int, int, str_storage);
 #ifndef MAIN_LOCAL
 extern
 #endif
-int *getMemExpr(char*);
+int *getMemExpr(char*, int*, char*);
 
 /******************************************************************************
  *

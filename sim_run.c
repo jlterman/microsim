@@ -52,31 +52,28 @@ const str_storage simErrMsg[LAST_SIM_ERR - LAST_EXPR_ERR] =
 /* global function called from assembler for memory reference
  * Evalues memory location expression $addr[:c]
  */
-int *getMemExpr(char *expr)
+int *getMemExpr(char *expr, int *addr, char *c)
 {
-  int addr, bit;
-  char c = '\0';
+  int bit;
 
   if (!run_sim) return NULL;
 
-  if (expr[0] == '$')
-    {
-      if (expr[strlen(expr) - 2] == ':')
-	{
-	  c = expr[strlen(expr) - 1];
-	  expr[strlen(expr) - 2] = '\0';
-	}
-      addr = getExpr(expr + 1);
-      if (c) expr[strlen(expr) - 2] == ':';
-      return getMemory(addr, c);
-    }
-  else if (expr[0] == '@')
+  if (expr[0] == '@')
     {
       if (!strcmp(expr + 1, "pc")) return &pc;
-      return getRegister(expr + 1, &bit, &addr);
+      return getRegister(expr + 1, &bit, addr);
     }
-  else
-    return NULL;
+  else  if (expr[0] == '$')
+    ++expr;
+
+  *c = '\0';
+  if (expr[strlen(expr) - 2] == ':')
+    {
+      *c = expr[strlen(expr) - 1];
+      expr[strlen(expr) - 2] = '\0';
+    }
+  *addr = getExpr(expr);
+  return getMemory(*addr, *c);
 }
 
 /* first break in array reserved for next command
@@ -108,16 +105,15 @@ int addBrk(int tmpFlag, int addr, char *expr)
 
 /* print break number. Print all if UNDEF, return TRUE if break exists
  */
-int printBreak(FILE* fd, int addr)
+int printBreak(FILE* fd, int brk)
 {
-  int i, brk;
-  if (addr == UNDEF)
+  int i;
+  if (brk == UNDEF)
     {
       for (i = 1; i<num_brk; ++i) printOneBreak(fd, i, brk_table + i);
       return TRUE;
     }
 
-  brk = -memory[pc] - 1;
   if (brk_table[brk].used)
     return printOneBreak(fd, brk, brk_table + brk);
   else
@@ -131,11 +127,16 @@ void delBrk(int brk)
   int i;
   if (brk == UNDEF)
     {
-      for (i = 1; i<num_brk; ++i) delBrk(i);
+      for (i = 1; i<num_brk; ++i) if (brk_table[i].used) delBrk(i);
       return;
     }
-  brk_table[brk].used = FALSE;
-  free(brk_table[brk].expr); /* free expr string, if any */
+  if (brk_table[brk].used)
+    {
+      free(brk_table[brk].expr); /* free expr string, if any */
+      brk_table[brk].used = FALSE;
+    }
+  else if (brk)
+    printf("Warning: break #%d does not exist\n", brk);
 }
 
 /* stepone will execute one instruction. It will step over any break
@@ -172,7 +173,7 @@ int run(int addr, int trace)
   while (TRUE)
     {
       brkFnd = -memory[pc] - 1;
-      if ((brkFnd>0) && (!(expr = brk_table[brkFnd].expr) || getExpr(expr))) break;
+      if ((brkFnd>=0) && (!(expr = brk_table[brkFnd].expr) || getExpr(expr))) break;
       stepOne();
       if (trace) traceDisplay();
     }

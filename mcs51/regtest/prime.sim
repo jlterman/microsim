@@ -2,6 +2,6 @@ dl
 dr b -
 b $done
 t
-pmd pstore @a
+pm pstore @a
 q
 yes

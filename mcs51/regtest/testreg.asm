@@ -1,4 +1,5 @@
 dac     equ     0800h   ; D/A converter device addr
+bstore	equ	20h
 
 pstore  equ  80h
         mov  pstore + 2, #0
@@ -26,3 +27,6 @@ addr40: cjne a, #14, addr56
         inc  r1
 addr56: mov  r7, a
         ret
+	jnb  bstore.0, addr40
+	jb   20h.0, addr40
+	jbc  20h, addr40

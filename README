@@ -13,8 +13,8 @@ To build the tools, check out the source and at the root directory and type:
 
 	make "CC=gcc -O"
 
-In the cygwin environment you can build win32 native tools (doesn't need 
-the cygwin.dll) with the command:
+In the cygwin environment <http://www.cygwin.com> you can build win32 native 
+tools (doesn't need the cygwin.dll) with the command:
 
 	make "CC=gcc -O -mno-cygwin"
 
