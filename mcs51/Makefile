@@ -1,23 +1,22 @@
-CFLAGS=-O -Wall -pedantic -c -I ./ -I ../include
-OBJS=back.o asm.o sim.o
+CFLAGS=-Wall -pedantic -c -I ./ -I ../include
+VPATH=../
+ASM51_OBJS=asm.o proc.o
+SIM51_OBJS=sim.o
 
-version.h: cpu_vers asm.c proc.h
-	echo \#define CPU_VERS \"version `cat cpu_vers`, build date\: `date "+%B %d, %Y %k:%M:%S"`\">version.h; \rm -f asm.o
+version_mc51.h: cpu_vers $(addsuffix .c,$(basename $(ASM51_OBJS) $(SIM51_OBJS)))
+	echo \#define CPU_VERS \"version `cat cpu_vers`, build date\: `date "+%B %d, %Y %k:%M:%S"`\">$@; \rm -f asm.o
 
-back.o:	../back.c proc.h
-	$(CC) $(CFLAGS) ../back.c -o $@
+asm51: main.o $(ASM_OBJS) $(ASM51_OBJS)
+	$(CC) $^ -o $@
 
-all:	version.h $(OBJS)
+sim51: main_sim.o $(SIM_OBJS) $(ASM_OBJS) $(ASM51_OBJS) $(SIM51_OBJS)
+	$(CC) $^ -o $@
 
-reset_test:
-	\rm -f *.obj *.out
-
-%.obj: %.asm ;	../asm51 $<
-
-%.out: %.obj;	@{ if diff $< $(<).ref ; then echo asm51 succeeded; else echo asm51 failed ; fi } > $@ ; cat $@
-
-test:	reset_test testrom.out testreg.out testall.out
-	@if grep -s fail *.out ; then echo test failed!!! ; else echo test okay ; fi ; \rm -f *.obj
+proc.o: proc.c
+	$(CC) $(CFLAGS) $^ -o proc.o
 
 clean:
-	\rm -f *.o *.obj *.out version.h
+	\rm -f *.o *.obj *.out version_mc51.h asm51 sim51
+
+all:	version_mc51.h asm51 sim51
+	cd regtest; $(MAKE) all

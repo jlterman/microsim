@@ -1,7 +1,7 @@
 /*************************************************************************************
 
-    Copyright (c) 2003 by Jim Terman
-    This file is part of the 8051 Assembler
+    Copyright (c) 2003, 2004 by James L. Terman
+    This file is part of the 8051 Simulator
 
     This program is free software; you can redistribute it and/or modify
     it under the terms of the GNU General Public License as published by
@@ -18,37 +18,31 @@
     Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA  02111-1307  USA
 
  *************************************************************************************/
-#define SIM_LOCAL
 
 #include <stdio.h>
 #include <stdlib.h>
-#include <setjmp.h>
+#include <assert.h>
+
+#define SIM_CPU_LOCAL
+
+#include "asmdefs.h"
 #include "asm.h"
 #include "front.h"
-#include "back.h"
 #include "proc.h"
+#include "cpu.h"
 
-#define bitAddr(baddr, addr, bit) \
-{ \
-  bit = 1<<((baddr) % 8); \
-  addr = ((baddr)>0x7F) ? (baddr) & 0xF8 : 0x20 + (baddr)/8; \
-}
+/* atRam will return the value of the memory location accessible by
+ * the 8051 @Ri addressing mode. The upper 128 bytes of @Ri address
+ * space is between 0x100 and 0x180.
+ */
+#define atram(x) (ram[((x)>=BYTE_MAX/2) ? (x)+BYTE_MAX/2 : (x)])
 
-#define relJmp(pc, rel) \
-{ \
-  pc += cpu_instr_tkn[memory[pc]][INSTR_TKN_BYTES] + (rel) - ((rel)>SGN_BYTE_MAX) ? 0x100 : 0; \
-  return; \
-}
+/* for bit addrr x, bit has the bit number and addr the byte address
+ */
+#define bitAddr(x, addr, bit) (bit = 1<<(x % 8), addr = ram + ((x>SGN_BYTE_MAX) ? x & 0xF8 : 0x20 + x/8))
 
-#define push(x) *(++sp) = (x)
-#define pop() (*(sp--))
+/* defintions for PSW */
 
-#define setC() (*psw |= 0x80)
-#define clrC() (*psw &= 0x7F)
-#define getC() (*psw > 0x80)
-
-#define setPSW(x) (*psw |= (x))
-#define clrPSW(x) (*psw &= (0xFF - (x)))
 #define carry 128
 #define auxc   64
 #define rs1    16
@@ -56,1033 +50,688 @@
 #define ov      4
 #define prty    1
 
-static int *acc, *b, *sp, *psw, *reg0, *reg1, *reg2, *reg3, *reg4, *reg5, *reg6, *reg7, *dpl, *dph;
-static int ram[BYTE_MAX+1] = { 0 };
-static int xram[MEMORY_MAX] = { 0 };
+#define setPSW(x, m) setBit(x, ram + PSW, m);
+#define setC(x) setBit(x, ram + PSW, carry)
+#define getC() (ram[PSW] >= carry)
 
-void reset()
+/* allocation of memory location and SFR's
+ * ram is 384 bytes. The first 128 bytes are the joint indirect and direct
+ * address space. The next 128 bytes are the SFR accessible by direct address.
+ * The last 128 bytes are the upper portion of the indirect adress space
+ * use the macro atram to get the correct area
+ */
+static int ram[BYTE_MAX+BYTE_MAX/2] = { 0 }; /* internal ram */
+static int xram[MEMORY_MAX] = { 0 };         /* external RAM */
+static int *reg[8];                          /* address of data registers */
+
+/* add 1 to stack pointer and store value at @Ri address
+ */
+static void pushStack(int data)
 {
-  acc = memory + getLabelValue("acc");
-  b   = memory + getLabelValue("b");
-  psw = memory + getLabelValue("psw");
-  sp  = memory + getLabelValue("sp");
-  dpl = memory + getLabelValue("dpl");
-  dph = memory + getLabelValue("dph");
-  reg0  = ram + 0;
-  reg1  = ram + 1;
-  reg2  = ram + 2;
-  reg3  = ram + 3;
-  reg4  = ram + 4;
-  reg5  = ram + 5;
-  reg6  = ram + 6;
-  reg7  = ram + 7;
+  if (++(ram[SP]) == (BYTE_MAX-1)) ram[SP] = 0;
+  atram(ram[SP]) = data;
 }
 
+/* return value pointed to by stack ponter in @Ri address and decrement
+ */
+static int popStack(void)
+{
+  int value = atram(ram[SP]); --(ram[SP]);
+  return value;
+}
+
+/* Put cpu in correct state after reset
+ */
+void reset(void)
+{
+  int i;
+  for (i = 0; i<8; ++i) reg[i] = ram + i;
+  ram[P0] = ram[P1] = ram[P2] = ram[P3] = BYTE_MASK;
+  pc = 0;
+  ram[SP] = 7;
+}
+
+/* add value to acc with the proper setting of status registers.
+ * carry is used according to carryFlag but always set afterwards
+ */
 static void doAdd(int value, int carryFlag)
 {
-  int ac, nc;
+  int ac = ((ram[ACC] & LO_NYBLE) + (value & LO_NYBLE) + getC()*carryFlag) > LO_NYBLE;
+  int nc = (ram[ACC] + value + (getC()*carryFlag)) > BYTE_MASK;
+  setPSW(ac, auxc);
+  ac = ((ram[ACC] & (BYTE_MASK - BIT7_MASK)) + (value & (BYTE_MASK - BIT7_MASK)) + getC()*carryFlag) > (BYTE_MASK - BIT7_MASK);
+  setPSW(ac ^ nc, ov);
 
-  ac = ((*acc & 0x0F) + (value & 0x0F) + getC()*carryFlag) > 0xF;
-  if (ac) setPSW(auxc); else clrPSW(auxc);
-
-  nc = (*acc + value + (getC()*carryFlag)) > 0xFF;
-  ac = ((*acc & 0x7F) + (value & 0x7F) + getC()*carryFlag) > 0x7F;
-  if (ac ^ nc) setPSW(ov); else clrPSW(ov);
-
-  if (nc) setC(); else clrC();
-  *acc = (*acc + value + getC()*carryFlag) & 0xFF;
+  setC(nc);
+  ram[ACC] = (ram[ACC] + value + getC()*carryFlag) & BYTE_MASK;
 }
 
+/* doSub sub value from acc setting status flags correctly afterwards
+ */
 static void doSub(int value)
 {
-  int ac, nc;
+  int ac = ((ram[ACC] & LO_NYBLE) - (value & LO_NYBLE) - getC()) < 0;
+  int nc = (ram[ACC] - value - getC()) < 0;
 
-  ac = ((*acc & 0x0F) - (value & 0x0F) - getC()) < 0;
-  if (ac) setPSW(auxc); else clrPSW(auxc);
-
-  nc = (*acc - value - getC()) < 0;
-  ac = ((*acc & 0x7F) - (value & 0x7F) - getC()) < 0;
-  if (ac ^ nc) setPSW(ov); else clrPSW(ov);
-
-  if (nc) setC(); else clrC();
-  *acc = (*acc - value - getC()) & 0xFF;
+  setPSW(ac, auxc);
+  ac = ((ram[ACC] & (BYTE_MASK - BIT7_MASK)) - (value & (BYTE_MASK - BIT7_MASK)) - getC()) < 0;
+  setPSW(ac ^ nc, ov); setC(nc);
+  ram[ACC] = (ram[ACC] - value - getC()) & BYTE_MASK;
 }
 
-void doStep()
+/* after each instr PSW can change. Address of data registers change if
+ * rs0 and rs1 are changed. prty bit is on if odd no of bits in acc.
+ */
+static void updatePSW()
 {
-  int addr, c, bit, x, y;
-
-  switch (memory[pc])
+  int i, p, addr = ram[PSW] & (rs1 + rs0);
+  if (reg[0] - ram != addr)
     {
-    case 0x00: /* nop */
-      break;
-    case 0x01: /* ajmp addr */
-      pc = memory[pc+1];
-      return;
-      break;
-    case 0x02: /* ljmp addr */
-      pc = memory[pc+1]*0x100 + memory[pc+2];
-      return;
-      break;
-    case 0x03: /* rr a */
-      *acc = *acc/2 + 0x80 * (*acc % 2);
-      break;
-    case 0x04: /* inc a */
-      *acc = getLow(*acc+1);
-      break;
-    case 0x05: /* inc addr */
-      addr = memory[pc+1];
-      ram[addr] = getLow(ram[addr]+1);
-      break;
-    case 0x06: /* inc @r0 */
-      addr = *reg0;
-      ram[addr] = getLow(ram[addr]+1);
-      break;
-    case 0x07: /* inc @r1 */
-      addr = *reg1;
-      ram[addr] = getLow(ram[addr]+1);
-      break;
-    case 0x08: /* inc r0 */
-      *reg0 = getLow(*reg0+1);
-      break;
-    case 0x09: /* inc r1 */
-      *reg1 = getLow(*reg1+1);
-      break;
-    case 0x0A: /* inc r2 */
-      *reg2 = getLow(*reg2+1);
-      break;
-    case 0x0B: /* inc r3 */
-      *reg3 = getLow(*reg3+1);
-      break;
-    case 0x0C: /* inc r4 */
-      *reg4 = getLow(*reg4+1);
-      break;
-    case 0x0D: /* inc r5 */
-      *reg5 = getLow(*reg5+1);
-      break;
-    case 0x0E: /* inc r6 */
-      *reg6 = getLow(*reg6+1);
-      break;
-    case 0x0F: /* inc r7 */
-      *reg7 = getLow(*reg7+1);
-      break;
-    case 0x10: /* jbc bit_addr, addr */
-      bitAddr(memory[pc+1], addr, bit);
-      if (ram[addr] & bit)
-	{
-	  ram[addr] &= 0xFF - bit;
-	  relJmp(pc, memory[pc+2]);
-	}
-      break;
-    case 0x11: /* acall addr */
-      pc += 2;
-      push(getLow(pc));
-      push(getHigh(pc));
+      reg[0] = ram + addr;     reg[1] = ram + addr + 1; 
+      reg[2] = ram + addr + 2; reg[3] = ram + addr + 3;
+      reg[4] = ram + addr + 4; reg[5] = ram + addr + 5; 
+      reg[6] = ram + addr + 6; reg[7] = ram + addr + 7;
+    }
+  p = 0;
+  for (i=BIT7_MASK; i; i /= 2) { p += ((ram[ACC] & i) != 0); }
+  setPSW(p & 1, prty);
+}
 
-      pc =  memory[pc+1];
-      return;
-      break;
-    case 0x12: /* lcall addr */
-      pc += 3;
-      push(getLow(pc));
-      push(getHigh(pc));
+/* Get param will calculate the parameters from the cpu_instr_tkn entry
+ * for opcode op. codeptr is the current byte in the opcode, index the
+ * current entry in the table being scanned.
+ * 
+ * if reg or memory parameter found, *param is set to address of memory or reg
+ * if regular addr found, *addr set to this value
+ * if bit addr found, *param will have addr of byte, and bparam has bit num
+ */
+static int getParam(int op, int *index, int *codeptr, int **param, int *bparam, int *addr)
+{
+  int code = memory[*codeptr], inv = -1, *p = NULL, bp = UNDEF,
+      t = cpu_instr_tkn[op][(*index)++];
 
-      pc = memory[pc+1]*0x100 + memory[pc+2];
-      return;
+  switch (t)
+    {
+    case 0:
+      return FALSE;
       break;
-    case 0x13: /* rrc a */
-      c = *acc & 1;
-      *acc /= 2;
-      *acc |= getC()*0x80;
-      (c) ? setC() : clrC();
+    case addr_11: /* mask top 3 bits of opcode and make a10, a9, a8 */
+      *addr = ((op & 0xE0)<<3) + code;
       break;
-    case 0x14: /* dec a */
-      *acc = getLow(*acc-1);
+    case addr_16:
+      *addr = code*BYTE_MAX +  memory[++(*codeptr)];
       break;
-    case 0x15: /* dec addr */
-      addr = memory[pc+1];
-      ram[addr] = getLow(ram[addr]-1);
-      break;
-    case 0x16: /* dec @r0 */
-      addr = *reg0;
-      ram[addr] = getLow(ram[addr]-1);
-      break;
-    case 0x17: /* dec @r1 */
-      addr = *reg1;
-      ram[addr] = getLow(ram[addr]-1);
-      break;
-    case 0x18: /* dec r0 */
-      *reg0 = getLow(*reg0-1);
-      break;
-    case 0x19: /* dec r1 */
-      *reg1 = getLow(*reg1-1);
-      break;
-    case 0x1A: /* dec r2 */
-      *reg2 = getLow(*reg2-1);
-      break;
-    case 0x1B: /* dec r3 */
-      *reg3 = getLow(*reg3-1);
-      break;
-    case 0x1C: /* dec r4 */
-      *reg4 = getLow(*reg4-1);
-      break;
-    case 0x1D: /* dec r5 */
-      *reg5 = getLow(*reg5-1);
-      break;
-    case 0x1E: /* dec r6 */
-      *reg6 = getLow(*reg6-1);
-      break;
-    case 0x1F: /* dec r7 */
-      *reg7 = getLow(*reg7-1);
-      break;
-    case 0x20: /* jb bit_addr, addr */
-      bitAddr(memory[pc+1], addr, bit);
-      if (ram[addr] & bit) relJmp(pc, memory[pc+2]);
+    case addr_8:
+    case rel_addr:
+      *addr += code;
       break;      
-    case 0x21: /* ajmp addr */
-      pc = 0x100 + memory[pc+1];
-      return;
+    case pound: /* code in memory is the source of the move */
+      p = memory + *codeptr;
+      ++*index;
       break;
-    case 0x22: /* ret */
-      y = pop();
-      x = pop();
-      pc = y*0x100 + x;
-      return;
+    case slash: /* negative bit addr will indicate inverse bit */
+      ++(*index);
+      inv = -1;
+    case bit_addr:
+      bitAddr(code, p, bp);
+      bp *= inv;
       break;
-    case 0x23: /* rl a */
-      c = *acc & 0x80;
-      *acc = (*acc & 0x7F)*2;
-      *acc += (c!=0);
+    case a_dptr:
+      *addr = ram[DPL] + ram[DPH]*BYTE_MAX + ram[ACC];
       break;
-    case 0x24: /* add a, #data */
-      doAdd(memory[pc+1], FALSE);
+    case a_pc:
+      *addr = pc + ram[ACC];
       break;
-    case 0x25: /* add a, addr */
-      addr = memory[pc+1];
-      doAdd(ram[addr], FALSE);
+    case at_dptr:
+      p = xram + ram[DPL] + ram[DPH]*BYTE_MAX;
       break;
-    case 0x26: /* add a, @r0 */
-      doAdd(ram[*reg0], FALSE);
-      break;
-    case 0x27: /* add a, @r1 */
-      doAdd(ram[*reg1], FALSE);
-      break;
-    case 0x28: /* add a, r0 */
-      doAdd(*reg0, FALSE);
-      break;
-    case 0x29: /* add a, r1 */
-      doAdd(*reg1, FALSE);
-      break;
-    case 0x2A: /* add a, r2 */
-      doAdd(*reg2, FALSE);
-      break;
-    case 0x2B: /* add a, r3 */
-      doAdd(*reg3, FALSE);
-      break;
-    case 0x2C: /* add a, r4 */
-      doAdd(*reg4, FALSE);
-      break;
-    case 0x2D: /* add a, r5 */
-      doAdd(*reg5, FALSE);
-      break;
-    case 0x2E: /* add a, r6 */
-      doAdd(*reg6, FALSE);
-      break;
-    case 0x2F: /* add a, r7 */
-      doAdd(*reg7, FALSE);
-      break;
-    case 0x30: /* jnb bit_addr, addr */
-      bitAddr(memory[pc+1], addr, bit);
-      if (!(ram[addr] & bit)) relJmp(pc, memory[pc+2]);
-      break;      
-    case 0x31: /* acall addcr */
-      pc += 2;
-      push(getLow(pc));
-      push(getHigh(pc));
-
-      pc = 0x100 + memory[pc+1];
-      return;
-      break;
-    case 0x32: /* reti */
-      y = pop();
-      x = pop();
-      pc = y*0x100 + x;
-      return;
-      break;
-    case 0x33: /* rlc a */
-      c = *acc & 0x80;
-      *acc = (*acc & 0x7F)*2;
-      *acc += (c!=0);
-
-      *acc = *acc*2;
-      *acc |= getC();
-      if (*acc & 0x100)
-	{
-	  *acc &= 0xFF; setC();
-	}
+    case at_r0:
+    case at_r1:
+      if (cpu_instr_tkn[op][INSTR_TKN_INSTR]==movx) 
+	p = xram + ram[P2]*BYTE_MAX + *reg[t - at_r0];
       else
-	clrC();
+	p = &atram(*reg[t - at_r0]);
       break;
-    case 0x34: /* addc a, #data */
-      doAdd(ram[pc+1], TRUE);
+    case a:
+      p = ram + ACC;
       break;
-    case 0x35: /* addc a, addr */
-      addr = memory[pc+1];
-      doAdd(ram[addr], TRUE);
+    case c: /* bit addr of carry */
+      p = ram + PSW; bp = carry;
       break;
-    case 0x36: /* addc a, @r0 */
-      doAdd(ram[*reg0], TRUE);
+    case dptr:
+      p = ram + DPL;
       break;
-    case 0x37: /* addc a, @r1 */
-      doAdd(ram[*reg1], TRUE);
+    case r0: case r1: case r2: case r3:
+    case r4: case r5: case r6: case r7:
+      p = reg[t - r0];
       break;
-    case 0x38: /* addc a, r0 */
-      doAdd(*reg0, TRUE);
-      break;
-    case 0x39: /* addc a, r1 */
-      doAdd(*reg1, TRUE);
-      break;
-    case 0x3A: /* addc a, r2 */
-      doAdd(*reg2, TRUE);
-      break;
-    case 0x3B: /* addc a, r3 */
-      doAdd(*reg3, TRUE);
-      break;
-    case 0x3C: /* addc a, r4 */
-      doAdd(*reg4, TRUE);
-      break;
-    case 0x3D: /* addc a, r5 */
-      doAdd(*reg5, TRUE);
-      break;
-    case 0x3E: /* addc a, r6 */
-      doAdd(*reg6, TRUE);
-      break;
-    case 0x3F: /* addc a, r7 */
-      doAdd(*reg7, TRUE);
-      break;
-    case 0x40: /* jc addr */
-      if (getC()) relJmp(pc, memory[pc+1]);
-      break;      
-    case 0x41: /* ajmp addr */
-      pc = 0x200 + memory[pc+1];
-      return;
-      break;
-    case 0x42: /* orl addr, a */
-      addr = memory[pc+1];
-      ram[addr] |= *acc;
-      break;
-    case 0x43: /* orl addr, #data */
-      addr = memory[pc+1];
-      ram[addr] |= ram[pc+2];
-      break;
-    case 0x44: /* orl a, #data */
-      *acc |= ram[pc+1];
-      break;
-    case 0x45: /* orl a, addr */
-      addr = memory[pc+1];
-      *acc |= ram[addr];
-      break;
-    case 0x46: /* orl a, @r0 */
-      *acc |= ram[*reg0];
-      break;
-    case 0x47: /* orl a, @r1 */
-      *acc |= ram[*reg1];
-      break;
-    case 0x48: /* orl a, r0 */
-      *acc |= *reg0;
-      break;
-    case 0x49: /* orl a, r1 */
-      *acc |= *reg1;
-      break;
-    case 0x4A: /* orl a, r2 */
-      *acc |= *reg2;
-      break;
-    case 0x4B: /* orl a, r3 */
-      *acc |= *reg3;
-      break;
-    case 0x4C: /* orl a, r4 */
-      *acc |= *reg4;
-      break;
-    case 0x4D: /* orl a, r5 */
-      *acc |= *reg5;
-      break;
-    case 0x4E: /* orl a, r6 */
-      *acc |= *reg6;
-      break;
-    case 0x4F: /* orl a, r7 */
-      *acc |= *reg7;
-      break;
-    case 0x50: /* jnc addr */
-      if (!getC()) relJmp(pc, memory[pc+1]);
-      break;      
-    case 0x51: /* acall addr */
-      pc += 2;
-      push(getLow(pc));
-      push(getHigh(pc));
-
-      pc = 0x200 + memory[pc+1];
-      return;
-      break;
-    case 0x52: /* anl addr, a */
-      addr = memory[pc+1];
-      ram[addr] &= *acc;
-      break;
-    case 0x53: /* anl addr, #data */
-      addr = memory[pc+1];
-      ram[addr] &= ram[pc+2];
-      break;
-    case 0x54: /* anl a, #data */
-      *acc &= ram[pc+1];
-      break;
-    case 0x55: /* anl a, addr */
-      addr = memory[pc+1];
-      *acc &= ram[addr];
-      break;
-    case 0x56: /* anl a, @r0 */
-      *acc &= ram[*reg0];
-      break;
-    case 0x57: /* anl a, @r1 */
-      *acc &= ram[*reg1];
-      break;
-    case 0x58: /* anl a, r0 */
-      *acc &= *reg0;
-      break;
-    case 0x59: /* anl a, r1 */
-      *acc &= *reg1;
-      break;
-    case 0x5A: /* anl a, r2 */
-      *acc &= *reg2;
-      break;
-    case 0x5B: /* anl a, r3 */
-      *acc &= *reg3;
-      break;
-    case 0x5C: /* anl a, r4 */
-      *acc &= *reg4;
-      break;
-    case 0x5D: /* anl a, r5 */
-      *acc &= *reg5;
-      break;
-    case 0x5E: /* anl a, r6 */
-      *acc &= *reg6;
-      break;
-    case 0x5F: /* anl a, r7 */
-      *acc &= *reg7;
-      break;
-    case 0x60: /* jz addr */
-      if (*acc == 0) relJmp(pc, memory[pc+1]);
-      break;      
-    case 0x61: /* ajmp addr */
-      pc = 0x300 + memory[pc+1];
-      return;
-      break;
-    case 0x62: /* xrl addr, a */
-      addr = memory[pc+1];
-      ram[addr] ^= *acc;
-      break;
-    case 0x63: /* xrl addr, #data */
-      addr = memory[pc+1];
-      ram[addr] ^= ram[pc+2];
-      break;
-    case 0x64: /* xrl a, #data */
-      *acc ^= ram[pc+1];
-      break;
-    case 0x65: /* xrl a, addr */
-      addr = memory[pc+1];
-      *acc ^= ram[addr];
-      break;
-    case 0x66: /* xrl a, @r0 */
-      *acc ^= ram[*reg0];
-      break;
-    case 0x67: /* xrl a, @r1 */
-      *acc ^= ram[*reg1];
-      break;
-    case 0x68: /* xrl a, r0 */
-      *acc ^= *reg0;
-      break;
-    case 0x69: /* xrl a, r1 */
-      *acc ^= *reg1;
-      break;
-    case 0x6A: /* xrl a, r2 */
-      *acc ^= *reg2;
-      break;
-    case 0x6B: /* xrl a, r3 */
-      *acc ^= *reg3;
-      break;
-    case 0x6C: /* xrl a, r4 */
-      *acc ^= *reg4;
-      break;
-    case 0x6D: /* xrl a, r5 */
-      *acc ^= *reg5;
-      break;
-    case 0x6E: /* xrl a, r6 */
-      *acc ^= *reg6;
-      break;
-    case 0x6F: /* xrl a, r7 */
-      *acc ^= *reg7;
-      break;
-    case 0x70: /* jnz addr */
-      if (*acc) relJmp(pc, memory[pc+1]);
-      break;      
-    case 0x71: /* acall addr */
-      pc += 2;
-      push(getLow(pc));
-      push(getHigh(pc));
-
-      pc = 0x300 + memory[pc+1];
-      return;
-      break;
-    case 0x72: /* orl c, bit_addr */
-      bitAddr(memory[pc+1], addr, bit);
-      if ( (ram[addr] & bit) || getC() ) setC(); else clrC();
-      break;
-    case 0x73: /* jmp @a+dptr */
-      pc = *acc + *dpl + *dph*0x100;
-      return;
-      break;
-    case 0x74: /* mov a, #data */
-      *acc = memory[pc+1];
-      break;
-    case 0x75: /* mov addr, #data */
-      addr = memory[pc+1];
-      ram[addr] = memory[pc+2];
-      break;
-    case 0x76: /* mov @r0, #data */
-      ram[*reg0] = memory[pc+1];
-      break;
-    case 0x77: /* mov @r1, #data */
-      ram[*reg1] = memory[pc+1];
-      break;
-    case 0x78: /* mov r0, #data */
-      *reg0 = memory[pc+1];
-      break;
-    case 0x79: /* mov r1, #data */
-      *reg1 = memory[pc+1];
-      break;
-    case 0x7A: /* mov r2, #data */
-      *reg2 = memory[pc+1];
-      break;
-    case 0x7B: /* mov r3, #data */
-      *reg3 = memory[pc+1];
-      break;
-    case 0x7C: /* mov r4, #data */
-      *reg4 = memory[pc+1];
-      break;
-    case 0x7D: /* mov r5, #data */
-      *reg5 = memory[pc+1];
-      break;
-    case 0x7E: /* mov r6, #data */
-      *reg6 = memory[pc+1];
-      break;
-    case 0x7F: /* mov r7, #data */
-      *reg7 = memory[pc+1];
-      break;
-    case 0x80: /* sjmp addr */
-      relJmp(pc, memory[pc+1]);
-      break;      
-    case 0x81: /* ajmp addr */
-      pc = 0x400 + memory[pc+1];
-      return;
-      break;
-    case 0x82: /* anl c, bit_addr */
-      bitAddr(memory[pc+1], addr, bit);
-      if ( (ram[addr] & bit) && getC() ) setC(); else clrC();
-      break;
-    case 0x83: /* movc a,@a+pc */
-      *acc = memory[*acc + pc];
-      break;
-    case 0x84: /* div ab */
-      if (*b)
-	{
-	  x = *acc; y = *b;
-	  *acc = x/y; *b = x%y;
-	  clrPSW(carry + ov);
-	}
-      else
-	{
-	  *acc = 0xFF; *b = 0xFF;
-	  clrC();
-	  setPSW(ov);
-	}
-      break;
-    case 0x85: /* mov addr, addr */
-      addr = memory[pc+2];
-      ram[addr] = ram[memory[pc+1]];
-      break;
-    case 0x86: /* mov addr, @r0 */
-      addr = memory[pc+1];
-      ram[addr] = memory[*reg0];
-      break;
-    case 0x87: /* mov addr, @r1 */
-      addr = memory[pc+1];
-      ram[addr] = memory[*reg1];
-      break;
-    case 0x88: /* mov addr, r0 */
-      addr = memory[pc+1];
-      ram[addr] = *reg0;
-      break;
-    case 0x89: /* mov addr, r1 */
-      addr = memory[pc+1];
-      ram[addr] = *reg1;
-      break;
-    case 0x8A: /* mov addr, r2 */
-      addr = memory[pc+1];
-      ram[addr] = *reg2;
-      break;
-    case 0x8B: /* mov addr, r3 */
-      addr = memory[pc+1];
-      ram[addr] = *reg3;
-      break;
-    case 0x8C: /* mov addr, r4 */
-      addr = memory[pc+1];
-      ram[addr] = *reg4;
-      break;
-    case 0x8D: /* mov addr, r5 */
-      addr = memory[pc+1];
-      ram[addr] = *reg5;
-      break;
-    case 0x8E: /* mov addr, r6 */
-      addr = memory[pc+1];
-      ram[addr] = *reg6;
-      break;
-    case 0x8F: /* mov addr, r7 */
-      addr = memory[pc+1];
-      ram[addr] = *reg7;
-      break;
-    case 0x90: /* mov dptr, #data */
-      *dph = memory[pc+1];
-      *dpl = memory[pc+2];
-      break;
-    case 0x91: /* acall addr */
-      pc += 2;
-      push(getLow(pc));
-      push(getHigh(pc));
-
-      pc = 0x400 + memory[pc+1];
-      return;
-      break;
-    case 0x92: /* mov bit_addr, C */
-      bitAddr(memory[pc+1], addr, bit);
-      if (getC()) 
-	ram[addr] |= bit; 
-      else 
-	ram[addr] &= (0xFF - bit);
-      break;
-    case 0x93: /* movc a, @a+dptr */
-      *acc = memory[*acc + *dpl + *dph*0x100];
-      break;
-    case 0x94: /* subb a, #data */
-      doSub(ram[pc+1]);
-      break;
-    case 0x95: /* subb a, addr */
-      addr = memory[pc+1];
-      doSub(ram[addr]);
-      break;
-    case 0x96: /* subb a, @r0 */
-      doSub(ram[*reg0]);
-      break;
-    case 0x97: /* subb a, @r1 */
-      doSub(ram[*reg1]);
-      break;
-    case 0x98: /* subb a, r0 */
-      doSub(*reg0);
-      break;
-    case 0x99: /* subb a, r1 */
-      doSub(*reg1);
-      break;
-    case 0x9A: /* subb a, r2 */
-      doSub(*reg2);
-      break;
-    case 0x9B: /* subb a, r3 */
-      doSub(*reg3);
-      break;
-    case 0x9C: /* subb a, r4 */
-      doSub(*reg4);
-      break;
-    case 0x9D: /* subb a, r5 */
-      doSub(*reg5);
-      break;
-    case 0x9E: /* subb a, r6 */
-      doSub(*reg6);
-      break;
-    case 0x9F: /* subb a, r7 */
-      doSub(*reg7);
-      break;
-    case 0xA0: /* orl c, /bit_addr */
-      bitAddr(memory[pc+1], addr, bit);
-      if ( !(ram[addr] & bit) || getC() ) setC(); else clrC();
-      break;
-    case 0xA1: /* ajmp addr */
-      pc = 0x500 + memory[pc+1];
-      return;
-      break;
-    case 0xA2: /* mov c, bit_addr */
-      bitAddr(memory[pc+1], addr, bit);
-      if (ram[addr] & bit) setC(); else clrC();
-      break;
-    case 0xA3: /* inc dptr */
-      if (*dpl == 0xFF)
-	{
-	  *dpl = 0; ++(*dph); *dph = getLow(*dph);
-	}
-      else
-	++(*dpl);
-      break;
-    case 0xA4: /* mul ab */
-      x = *acc * (*b);
-      *acc = getLow(x); *b = getHigh(x);
-      if (x > 0xFF) setPSW(ov); else clrPSW(ov);
-      clrC();
-      break;
-    case 0xA5: /* reserved opcode */
-      break;
-    case 0xA6: /* mov @r0, addr */
-      addr = memory[pc+1];
-      memory[*reg0] = ram[addr];
-      break;
-    case 0xA7: /* mov @r1, addr */
-      addr = memory[pc+1];
-      memory[*reg1] = ram[addr];
-      break;
-    case 0xA8: /* mov r0, addr */
-      addr = memory[pc+1];
-      *reg0 = memory[addr];
-      break;
-    case 0xA9: /* mov r1, addr */
-      addr = memory[pc+1];
-      *reg1 = memory[addr];
-      break;
-    case 0xAA: /* mov r2, addr */
-      addr = memory[pc+1];
-      *reg2 = memory[addr];
-      break;
-    case 0xAB: /* mov r3, addr */
-      addr = memory[pc+1];
-      *reg3 = memory[addr];
-      break;
-    case 0xAC: /* mov r4, addr */
-      addr = memory[pc+1];
-      *reg4 = memory[addr];
-      break;
-    case 0xAD: /* mov r5, addr */
-      addr = memory[pc+1];
-      *reg5 = memory[addr];
-      break;
-    case 0xAE: /* mov r6, addr */
-      addr = memory[pc+1];
-      *reg6 = memory[addr];
-      break;
-    case 0xAF: /* mov r7, addr */
-      addr = memory[pc+1];
-      *reg7 = memory[addr];
-      break;
-    case 0xB0: /* anl c, /bit_addr */
-      bitAddr(memory[pc+1], addr, bit);
-      if ( !(ram[addr] & bit) && getC() ) setC(); else clrC();
-      break;
-    case 0xB1: /* acall addr */
-      pc += 2;
-      push(getLow(pc));
-      push(getHigh(pc));
-
-      pc = 0x500 + memory[pc+1];
-      return;
-      break;
-    case 0xB2: /* cpl bit_addr */
-       bitAddr(memory[pc+1], addr, bit);
-       if (ram[addr] & bit) 
-	 ram[addr] &= (0xFF - bit); 
-       else 
-	 ram[addr] |= bit;
-       break;
-    case 0xB3: /* cpl c */
-      if (getC()) clrC(); else setC();
-      break;
-    case 0xB4: /* cjne a, #data, addr */
-      if (*acc < memory[pc+1]) setC(); else clrC();
-      if (*acc != memory[pc+1]) relJmp(pc, memory[pc+2]);
-      break;
-    case 0xB5: /* cjne a, direct_addr, addr */
-      addr = memory[pc+1];
-      if (*acc < ram[addr]) setC(); else clrC();
-      if (*acc != ram[addr]) relJmp(pc, memory[pc+2]);
-      break;
-    case 0xB6: /* cjne @r0, #data, addr */
-      if (*acc < ram[*reg0]) setC(); else clrC();
-      if (ram[*reg0] != memory[pc+1]) relJmp(pc, memory[pc+2]);
-      break;
-    case 0xB7: /* cjne @r1, #data, addr */
-      if (*acc < ram[*reg1]) setC(); else clrC();
-      if (ram[*reg1] != memory[pc+1]) relJmp(pc, memory[pc+2]); 
-    break;
-    case 0xB8: /* cjne r0, #data, addr */
-      if (*reg0 < memory[pc+1]) setC(); else clrC();
-      if (*reg0 != memory[pc+1]) relJmp(pc, memory[pc+2]);
-      break;
-    case 0xB9: /* cjne r1, #data, addr */
-      if (*reg1 < memory[pc+1]) setC(); else clrC();
-      if (*reg1 != memory[pc+1]) relJmp(pc, memory[pc+2]);
-      break;
-    case 0xBA: /* cjne r2, #data, addr */
-      if (*reg2 < memory[pc+1]) setC(); else clrC();
-      if (*reg2 != memory[pc+1]) relJmp(pc, memory[pc+2]);
-      break;
-    case 0xBB: /* cjne r3, #data, addr */
-      if (*reg3 < memory[pc+1]) setC(); else clrC();
-      if (*reg3 != memory[pc+1]) relJmp(pc, memory[pc+2]);
-      break;
-    case 0xBC: /* cjne r4, #data, addr */
-      if (*reg4 < memory[pc+1]) setC(); else clrC();
-      if (*reg4 != memory[pc+1]) relJmp(pc, memory[pc+2]);
-      break;
-    case 0xBD: /* cjne r5, #data, addr */
-      if (*reg5 < memory[pc+1]) setC(); else clrC();
-      if (*reg5 != memory[pc+1]) relJmp(pc, memory[pc+2]);
-      break;
-    case 0xBE: /* cjne r6, #data, addr */
-      if (*reg6 < memory[pc+1]) setC(); else clrC();
-      if (*reg6 != memory[pc+1]) relJmp(pc, memory[pc+2]);
-      break;
-    case 0xBF: /* cjne r7, #data, addr */
-      if (*reg7 < memory[pc+1]) setC(); else clrC();
-      if (*reg7 != memory[pc+1]) relJmp(pc, memory[pc+2]);
-      break;
-    case 0xC0: /* push addr */
-      push(memory[pc+1]);
-      break;
-    case 0xC1: /* ajmp addr */
-      pc = 0x600 + memory[pc+1];
-      return;
-      break;
-    case 0xC2: /* clr bit_addr */
-       bitAddr(memory[pc+1], addr, bit);
-       ram[addr] &= (0xFF - bit); 
-       break;
-    case 0xC3: /* clr c */
-      clrC();
-      break;
-    case 0xC4: /* swap a */
-      x = *acc & 0xF0;
-      *acc = (*acc & 0x0F)*16 + x/16;
-      break;
-    case 0xC5: /* xch a, addr */
-      addr = memory[pc+1];
-      x = *acc; *acc = ram[addr]; ram[addr] = x;
-      break;
-    case 0xC6: /* xch a, @r0 */
-      x = *acc; *acc = ram[*reg0]; ram[*reg0] = x;
-      break;
-    case 0xC7: /* xch a, @r1 */
-      x = *acc; *acc = ram[*reg1]; ram[*reg1] = x;
-      break;
-    case 0xC8: /* xch a, r0 */
-      x = *acc; *acc = *reg0; *reg0 = x;
-      break;
-    case 0xC9: /* xch a, r1 */
-      x = *acc; *acc = *reg1; *reg1 = x;
-      break;
-    case 0xCA: /* xch a, r2 */
-      x = *acc; *acc = *reg2; *reg2 = x;
-      break;
-    case 0xCB: /* xch a, r3 */
-      x = *acc; *acc = *reg3; *reg3 = x;
-      break;
-    case 0xCC: /* xch a, r4*/
-      x = *acc; *acc = *reg4; *reg4 = x;
-      break;
-    case 0xCD: /* xch a, r5 */
-      x = *acc; *acc = *reg5; *reg5 = x;
-      break;
-    case 0xCE: /* xch a, r6 */
-      x = *acc; *acc = *reg6; *reg6 = x;
-      break;
-    case 0xCF: /* xch a, r7 */
-      x = *acc; *acc = *reg7; *reg7 = x;
-      break;
-    case 0xD0: /* pop addr */
-      addr = memory[pc+1];
-      ram[addr] = pop();
-      break;
-    case 0xD1: /* acall addr */
-      pc += 2;
-      push(getLow(pc));
-      push(getHigh(pc));
-
-      pc = 0x600 + memory[pc+1];
-      return;
-      break;
-    case 0xD2: /* setb bit_addr */
-       bitAddr(memory[pc+1], addr, bit);
-       ram[addr] |= bit;
-       break;
-    case 0xD3: /* setb c */
-      setC();
-      break;
-    case 0xD4: /* da a */
-      if ( (*acc & 0x0F)>0x09 || (*psw | auxc)>0 ) doAdd(6, FALSE);
-      if ( (*acc & 0xF0)>0x90 || getC()) doAdd(0x60, FALSE);
-      break;
-    case 0xD5: /* djnz direct_addr, addr */
-      addr = memory[pc+1];
-      if (--(ram[addr])) relJmp(pc, memory[pc+2]);
-      break;
-    case 0xD6: /* xchd a, @r0 */
-      x = *acc & 0xF; *acc &= 0xF0;
-      *acc |= ram[*reg0] & 0x0F; 
-      ram[*reg0] &= 0xF0; ram[*reg0] |= x;
-      break;
-    case 0xD7: /* xchd a, @r1 */
-      x = *acc & 0xF; *acc &= 0xF0;
-      *acc |= ram[*reg1] & 0x0F; 
-      ram[*reg1] &= 0xF0; ram[*reg1] |= x;
-      break;
-    case 0xD8: /* djnz r0, addr */
-      if (--(*reg0)) relJmp(pc, memory[pc+1]);
-      break;
-    case 0xD9: /* djnz r1, addr */
-      if (--(*reg1)) relJmp(pc, memory[pc+1]);
-      break;
-    case 0xDA: /* djnz r2, addr */
-      if (--(*reg2)) relJmp(pc, memory[pc+1]);
-      break;
-    case 0xDB: /* djnz r3, addr */
-      if (--(*reg3)) relJmp(pc, memory[pc+1]);
-      break;
-    case 0xDC: /* djnz r4, addr */
-      if (--(*reg4)) relJmp(pc, memory[pc+1]);
-      break;
-    case 0xDD: /* djnz r5, addr */
-      if (--(*reg5)) relJmp(pc, memory[pc+1]);
-      break;
-    case 0xDE: /* djnz r6, addr */
-      if (--(*reg6)) relJmp(pc, memory[pc+1]);
-      break;
-    case 0xDF: /* djnz r7, addr */
-      if (--(*reg7)) relJmp(pc, memory[pc+1]);
-      break;
-    case 0xE0: /* movx a, @dptr */
-      addr = *dpl + *dph*0x100;
-      *acc = xram[addr];
-      break;
-    case 0xE1: /* ajmp addr */
-      pc = 0x700 + memory[pc+1];
-      return;
-      break;
-    case 0xE2: /* movx a, @r0 */
-      *acc = xram[*reg0];
-      break;
-    case 0xE3: /* movx a, @r1 */
-      *acc = xram[*reg1];
-      break;
-    case 0xE4: /* clr a */
-      *acc = 0;
-      break;
-    case 0xE5: /* mov a, addr */
-      addr = memory[pc+1];
-      *acc = ram[addr];
-      break;
-    case 0xE6: /* mov a, @r0 */
-      addr = memory[pc+1];
-      *acc = ram[*reg0];
-      break;
-    case 0xE7: /* mov a, @r1 */
-      addr = memory[pc+1];
-      *acc = ram[*reg1];
-      break;
-    case 0xE8: /* mov a, r0 */
-      addr = memory[pc+1];
-      *acc = *reg0;
-      break;
-    case 0xE9: /* mov a, r1 */
-      addr = memory[pc+1];
-      *acc = *reg1;
-      break;
-    case 0xEA: /* mov a, r2 */
-      addr = memory[pc+1];
-      *acc = *reg2;
-      break;
-    case 0xEB: /* mov a, r3 */
-      addr = memory[pc+1];
-      *acc = *reg3;
-      break;
-    case 0xEC: /* mov a, r4 */
-      addr = memory[pc+1];
-      *acc = *reg4;
-      break;
-    case 0xED: /* mov a, r5 */
-      addr = memory[pc+1];
-      *acc = *reg5;
-      break;
-    case 0xEE: /* mov a, r6 */
-      addr = memory[pc+1];
-      *acc = *reg6;
-      break;
-    case 0xEF: /* mov a, r7 */
-      addr = memory[pc+1];
-      *acc = *reg7;
-      break;
-    case 0xF0: /* movx @dptr, a */
-      addr = *dpl + *dph*0x100;
-      xram[addr] = *acc;
-      break;
-    case 0xF1: /* acall addr */
-      pc += 2;
-      push(getLow(pc));
-      push(getHigh(pc));
-
-      pc = 0x700 + memory[pc+1];
-      return;
-      break;
-    case 0xF2: /* movx @r0, a */
-      xram[*reg0] = *acc;
-      break;
-    case 0xF3: /* movx @r1, a */
-      xram[*reg1] = *acc;
-      break;
-    case 0xF4: /* cpl a */
-      *acc ^= 0xFF;
-      break;
-    case 0xF5: /* mov addr, a */
-      addr = memory[pc+1];
-      ram[addr] = *acc;
-      break;
-    case 0xF6: /* mov @r0, a */
-      ram[*reg0] = *acc;
-      break;
-    case 0xF7: /* mov @r1, a */
-      ram[*reg1] = *acc;
-      break;
-    case 0xF8: /* mov r0, a */
-      *reg0 = *acc;
-      break;
-    case 0xF9: /* mov r1, a */
-      *reg1 = *acc;
-      break;
-    case 0xFA: /* mov r2, a */
-      *reg2 = *acc;
-      break;
-    case 0xFB: /* mov r3, a */
-      *reg3 = *acc;
-      break;
-    case 0xFC: /* mov r4, a */
-      *reg4 = *acc;
-      break;
-    case 0xFD: /* mov r5, a */
-      *reg5 = *acc;
-      break;
-    case 0xFE: /* mov r6, a */
-      *reg6 = *acc;
-      break;
-    case 0xFF: /* mov r7, a */
-      *reg7 = *acc;
+    default:
+      assert(TRUE);
       break;
     }
+  /* if token is constant, it will have be encoded in memory, adv codeptr
+   */
+  if (t<PROC_TOKEN || t>LAST_PROC_TOKEN) ++(*codeptr);
+  ++(*index);
+  if (bparam) *bparam = bp; if (param) *param = p; /* don't assign if NULL */
+  return TRUE;
+}
+
+/* step() is the master function to update the registers and memory 
+ * from the execution of the opcode at memory[pc]
+ */
+void step(void)
+{
+  int *src = NULL, *dst = NULL, bsrc = UNDEF, bdst = UNDEF, addr = 0,
+      op = memory[pc], index = INSTR_TKN_PARAM, codeptr = pc + 1,
+      opcode = cpu_instr_tkn[op][INSTR_TKN_INSTR], x, y;
+  
+  /* value of pc during instr execution is pc of next instr
+   * return immediately if pc has overflowed (let sim register error)
+   */
   pc += cpu_instr_tkn[memory[pc]][INSTR_TKN_BYTES];
-  addr = *psw & (rs1 + rs0);
-  if (reg0 - ram != addr)
+  if (pc>MEMORY_MAX) return;
+
+  /* Look for up to 3 parameters in opcdoe. getParam will 
+   * return 0 if no more paramaters to be found.
+   * 1st param dest reg or memory, 2nd param source or addr, 
+   * 3rd param always address
+   */
+  getParam(op, &index, &codeptr, &dst, &bdst, &addr) &&
+  getParam(op, &index, &codeptr, &src, &bsrc, &addr) &&
+  getParam(op, &index, &codeptr, NULL, NULL,  &addr);
+
+  /* calls to getparam will set dst, src registers or memory locations
+   * plus any address. switch statment acts on these values
+   */
+  switch (opcode)
     {
-      reg0 = ram + addr;     reg1 = ram + addr + 1; 
-      reg2 = ram + addr + 2; reg3 = ram + addr + 3;
-      reg4 = ram + addr + 4; reg5 = ram + addr + 5; 
-      reg6 = ram + addr + 6; reg7 = ram + addr + 7;
+    case acall: /* acall addr_11 */
+      pushStack(getLow(pc));
+      pushStack(getHigh(pc));
+    case ajmp: /* ajmp addr_11 */
+      pc = (pc & 0xF800) + addr;
+      break;
+    case add:  /* add  dst, src */
+    case addc: /* addc dst, src */
+      doAdd(*src, (opcode - add) ? TRUE : FALSE);
+      break;
+    case anl: /* anl dst, src */
+      if (bdst != UNDEF) /* anl dst.bdst, src.bsrc */
+	setBit((*dst & bdst) && ((bsrc<0) ? !(*src & (-bsrc)) : *src & bsrc), dst, bdst);
+      else
+	*dst &= *src;
+      break;
+    case cjne: /* cjne dst, src, addr */
+      setC(*dst <  *src);
+      if (*dst != *src) relJmp(pc, addr);
+      break;
+    case clr: /* clr dst */
+      if (bdst != UNDEF) /* clr dst.bst */
+	setBit(0, dst, bdst); 
+      else 
+	*dst = 0;
+      break;
+    case cpl: /* cpl dst */
+      if (bdst != UNDEF) /* cpl dst.bst */
+	setBit(((*dst & bdst) != 0) ^ 1, dst, bdst);
+      else
+	*dst ^= BYTE_MASK;
+      break;
+    case da: /* da a */
+      if ((ram[ACC] & LO_NYBLE)>0x09 || (ram[PSW] | auxc)>0) doAdd(0x06, FALSE);
+      if ((ram[ACC] & HI_NYBLE)>0x90 || getC())              doAdd(0x60, FALSE);
+      break;
+    case dec: /* dec dst */
+      dec(*dst);
+      break;
+    case divab: /* div ab */
+      x = ram[ACC]; y = ram[B];
+      if (y)
+	{
+	  ram[ACC] = x/y; ram[B] = x%y;
+	}
+      setPSW(!y, ov); setC(0);
+      break;
+    case djnz: /* djnz dst, rel_addr */
+      if (dec(*dst)) relJmp(pc, addr);
+      break;
+    case inc: /* inc dst */
+      inc(*dst);
+      if (dst==(ram + DPL) && !(*dst)) inc(ram[DPH]); /* inc dptr */
+      break;
+    case jb: /* jb dst.bdst, rel_addr */
+      if (*dst & bdst) relJmp(pc, addr);
+      break;
+    case jbc: /* jbc dst.bdst, rel_addr */
+      if (*dst & bdst)
+	{
+	  setBit(0, dst, bdst); relJmp(pc, addr); 
+	}
+      break;
+    case jc: /* jc rel_addr */
+      if (getC()) relJmp(pc, addr);
+      break;
+    case jnb: /* jnb dst.bdst, rel_addr */
+      if (!(*dst & bdst)) relJmp(pc, addr);
+      break;
+    case jnc: /* jnc rel_addr */
+      if (!getC()) relJmp(pc, addr);
+      break;
+    case jnz: /* jnz rel_addr */
+      if (ram[ACC]) relJmp(pc, addr);
+      break;
+    case jz: /* jz rel_addr */
+      if (!(ram[ACC])) relJmp(pc, addr);
+      break;
+    case lcall: /* lcall addr_16 */
+      pushStack(getLow(pc));
+      pushStack(getHigh(pc));
+    case jmp:  /* jmp @a+dptr */
+    case ljmp: /* ljmp addr_16 */
+      pc = addr;
+      break;
+    case movc: /* movc src, addr_16 */
+      src = memory + addr;
+    case movx: case mov: /* mov dst, src */
+      if (op == 0x85)
+	*src = *dst;      /* for mov addr_8, addr_8 src & dst are reversed */
+      else if (bdst != UNDEF) /* mov dst.bdst, src.bsrc */
+	setBit(*src & bsrc, dst, bdst);
+      else 
+	{
+	  if (op == 0x90) ram[DPH] = *(src++); /* mov dptr, #data_16 */
+	  *dst = *src;
+	}
+      break;
+    case mul: /* mul ab */
+      x = ram[ACC] * (ram[B]);
+      ram[ACC] = getLow(x); ram[B] = getHigh(x);
+      setPSW(x >= BYTE_MAX, ov);
+      setC(0);
+      break;
+    case nop: case rsrvd:
+      break;
+    case orl: /* orl dst, src */
+      if (bdst != UNDEF) /* orl dst.bdst, src.bsrc */
+	setBit((*dst & bdst) || ((bsrc<0) ? !(*src & (-bsrc)) : *src & bsrc), dst, bdst);
+      else
+	*dst |= *src;
+      break;
+    case pop: /* pop addr_8 */
+      *dst = popStack();
+      break;
+    case push:  /* push addr_8 */
+      pushStack(*dst);
+      break;
+    case reti: case ret: /* reti, OR ret */
+      pc = popStack()*BYTE_MAX + popStack();
+      break;
+    case rl: /* rl a */
+      ram[ACC] = ((ram[ACC])*2 + (ram[ACC]>=BIT7_MASK)) & BYTE_MASK;
+      break;
+    case rlc: /* rlc a */
+      ram[ACC] = ram[ACC]*2 + getC();
+      setC(ram[ACC]>=BYTE_MAX);
+      ram[ACC] &= BYTE_MASK;
+      break;
+    case rr: /* rr a */
+      ram[ACC] = (ram[ACC])/2 + (ram[ACC] & BIT0_MASK)*BIT7_MASK;
+      break;
+    case rrc: /* rrc a */
+      x = getC();
+      setC(ram[ACC] & BIT0_MASK);
+      ram[ACC] |= 2*x*BIT7_MASK;
+      ram[ACC] /= 2;
+      break;
+    case setb: /* setb dst.bdst */
+      setBit(1, dst, bdst);
+      break;
+    case sjmp: /* sjmp rel_addr */
+      relJmp(pc, addr);
+      break;
+    case subb: /* subb a, dst */
+      doSub(*src);
+      break;
+    case swap: /* swap a */
+      ram[ACC] = (ram[ACC] & LO_NYBLE)*0x10 + ram[ACC]/0x10;
+      break;
+    case xch: /* xch a, src */
+      x = *src; *src = *dst; *dst = x;
+      break;
+    case xchd: /* xchd a, src */
+      x = *src & LO_NYBLE; 
+      *src = (*src & HI_NYBLE) + (*dst & LO_NYBLE);
+      *dst = (*dst & HI_NYBLE) + x;
+      break;
+    case xrl: /* xrl dst, src */
+      if (bdst != UNDEF) /* xrl dst.bdst, src.bsrc */
+	setBit(((*dst & bdst) != 0) ^ (((bsrc<0) ? !(*src & (-bsrc)) : *src & bsrc) != 0), dst, bdst);
+      else
+	*dst ^= *src;
+      break;
+    default:
+      assert(TRUE);
+      break;
+    }
+  updatePSW();
+}
+
+/* getRegister will return the address to the name of the register given it
+ * if *bit not UNDEF, register is one bit in length
+ */
+int *getRegister(str_storage name, int *bit)
+{
+  int index;
+  const str_storage *ret = bsearch(name, tokens, tokens_length, sizeof(str_storage), &cmpstr);
+  if (!ret) return NULL;
+  *bit = UNDEF;
+  index = ret - tokens + PROC_TOKEN;
+  switch (index)
+    {
+    case dptr: return ram + DPL + BYTE_MAX*ram[DPH]; break;
+    case pc_reg: return &pc;   break;
+    case r0: case r1: case r2: case r3:
+    case r4: case r5: case r6: case r7: 
+      return reg[index-r0];    break;
+    case a:  return ram + ACC; break;
+    case c:  *bit = carry;     return ram + PSW;   break;
+    default: return NULL;      break;
     }
 }
+
+/* getMemory will return the value of the memory location addr
+ * m allows to access to internal RAM, external RAM and external ROM
+ */
+int *getMemory(int addr, char m)
+{
+  int b, *mptr = NULL;
+  if (m == '\0') m = 'c';
+  switch (m)
+    {
+    case 'i': 
+      if (addr>=BYTE_MAX) return NULL;
+      mptr = ram + addr;
+      break;
+    case 'x':
+      if (addr>=MEMORY_MAX) return NULL;
+      mptr = xram + addr;
+      break;
+    case 'c':
+      if (addr>=MEMORY_MAX) return NULL;
+      mptr = memory + addr;
+      break;
+    case 'b':
+      bitAddr(addr, mptr, b);
+      break;
+    default:
+      break;
+    }
+  return mptr;
+}
+
+/***************************************
+ * 
+ * Complete list of 8051 instructions
+
+0x11: acall addr_11
+0x31: acall addr_11
+0x51: acall addr_11
+0x71: acall addr_11
+0x91: acall addr_11
+0xB1: acall addr_11
+0xD1: acall addr_11
+0xF1: acall addr_11
+0x25: add a, addr_8
+0x24: add a, #data_8
+0x26: add a, @r0
+0x27: add a, @r1
+0x28: add a, r0
+0x29: add a, r1
+0x2A: add a, r2
+0x2B: add a, r3
+0x2C: add a, r4
+0x2D: add a, r5
+0x2E: add a, r6
+0x2F: add a, r7
+0x35: addc a, addr_8
+0x34: addc a, #data_8
+0x36: addc a, @r0
+0x37: addc a, @r1
+0x38: addc a, r0
+0x39: addc a, r1
+0x3A: addc a, r2
+0x3B: addc a, r3
+0x3C: addc a, r4
+0x3D: addc a, r5
+0x3E: addc a, r6
+0x3F: addc a, r7
+0x01: ajmp addr_11
+0x21: ajmp addr_11
+0x41: ajmp addr_11
+0x61: ajmp addr_11
+0x81: ajmp addr_11
+0xA1: ajmp addr_11
+0xC1: ajmp addr_11
+0xE1: ajmp addr_11
+0x55: anl a, addr_8
+0x54: anl a, #data_8
+0x52: anl addr_8, a
+0x53: anl addr_8, #data_8
+0x56: anl a, @r0
+0x57: anl a, @r1
+0x58: anl a, r0
+0x59: anl a, r1
+0x5A: anl a, r2
+0x5B: anl a, r3
+0x5C: anl a, r4
+0x5D: anl a, r5
+0x5E: anl a, r6
+0x5F: anl a, r7
+0x82: anl c, bit_addr
+0xB0: anl c, /bit_addr
+0xB5: cjne a, addr_8, rel_addr
+0xB4: cjne a, #data_8, rel_addr
+0xB6: cjne @r0, #data_8, rel_addr
+0xB7: cjne @r1, #data_8, rel_addr
+0xB8: cjne r0, #data_8, rel_addr
+0xB9: cjne r1, #data_8, rel_addr
+0xBA: cjne r2, #data_8, rel_addr
+0xBB: cjne r3, #data_8, rel_addr
+0xBC: cjne r4, #data_8, rel_addr
+0xBD: cjne r5, #data_8, rel_addr
+0xBE: cjne r6, #data_8, rel_addr
+0xBF: cjne r7, #data_8, rel_addr
+0xE4: clr a
+0xC2: clr bit_addr
+0xC3: clr c
+0xF4: cpl a
+0xB2: cpl bit_addr
+0xB3: cpl c
+0xD4: da a
+0x14: dec a
+0x15: dec addr_8
+0x16: dec @r0
+0x17: dec @r1
+0x18: dec r0
+0x19: dec r1
+0x1A: dec r2
+0x1B: dec r3
+0x1C: dec r4
+0x1D: dec r5
+0x1E: dec r6
+0x1F: dec r7
+0x84: div ab
+0xD5: djnz addr_8, rel_addr
+0xD8: djnz r0, rel_addr
+0xD9: djnz r1, rel_addr
+0xDA: djnz r2, rel_addr
+0xDB: djnz r3, rel_addr
+0xDC: djnz r4, rel_addr
+0xDD: djnz r5, rel_addr
+0xDE: djnz r6, rel_addr
+0xDF: djnz r7, rel_addr
+0x04: inc a
+0x05: inc addr_8
+0xA3: inc dptr
+0x06: inc @r0
+0x07: inc @r1
+0x08: inc r0
+0x09: inc r1
+0x0A: inc r2
+0x0B: inc r3
+0x0C: inc r4
+0x0D: inc r5
+0x0E: inc r6
+0x0F: inc r7
+0x20: jb bit_addr, rel_addr
+0x10: jbc bit_addr, rel_addr
+0x40: jc rel_addr
+0x73: jmp @a+dptr
+0x30: jnb bit_addr, rel_addr
+0x50: jnc rel_addr
+0x70: jnz rel_addr
+0x60: jz rel_addr
+0x12: lcall addr_16
+0x02: ljmp addr_16
+0xE5: mov a, addr_8
+0x74: mov a, #data_8
+0xF5: mov addr_8, a
+0x85: mov addr_8, addr_8
+0x75: mov addr_8, #data_8
+0x88: mov addr_8, r0
+0x86: mov addr_8, @r0
+0x87: mov addr_8, @r1
+0x89: mov addr_8, r1
+0x8A: mov addr_8, r2
+0x8B: mov addr_8, r3
+0x8C: mov addr_8, r4
+0x8D: mov addr_8, r5
+0x8E: mov addr_8, r6
+0x8F: mov addr_8, r7
+0xE6: mov a, @r0
+0xE7: mov a, @r1
+0xE8: mov a, r0
+0xE9: mov a, r1
+0xEA: mov a, r2
+0xEB: mov a, r3
+0xEC: mov a, r4
+0xED: mov a, r5
+0xEE: mov a, r6
+0xEF: mov a, r7
+0x92: mov bit_addr, C
+0x93: movc a, @a+dptr
+0x83: movc a,@a+pc
+0xA2: mov c, bit_addr
+0x90: mov dptr, #data_16
+0xF6: mov @r0, a
+0xA6: mov @r0, addr_8
+0x76: mov @r0, #data_8
+0xF7: mov @r1, a
+0xA7: mov @r1, addr_8
+0x77: mov @r1, #data_8
+0xF8: mov r0, a
+0xA8: mov r0, addr_8
+0x78: mov r0, #data_8
+0xF9: mov r1, a
+0xA9: mov r1, addr_8
+0x79: mov r1, #data_8
+0xFA: mov r2, a
+0xAA: mov r2, addr_8
+0x7A: mov r2, #data_8
+0xFB: mov r3, a
+0xAB: mov r3, addr_8
+0x7B: mov r3, #data_8
+0xFC: mov r4, a
+0xAC: mov r4, addr_8
+0x7C: mov r4, #data_8
+0xFD: mov r5, a
+0xAD: mov r5, addr_8
+0x7D: mov r5, #data_8
+0xFE: mov r6, a
+0xAE: mov r6, addr_8
+0x7E: mov r6, #data_8
+0xFF: mov r7, a
+0xAF: mov r7, addr_8
+0x7F: mov r7, #data_8
+0xF0: movx @dptr, a
+0xE0: movx a, @dptr
+0xF0: movx @dptr, a
+0xF2: movx @r0, a
+0xF3: movx @r1, a
+0xE2: movx a, @r0
+0xE3: movx a, @r1
+0xA4: mul ab
+0x00: nop
+0x45: orl a, addr_8
+0x44: orl a, #data_8
+0x42: orl addr_8, a
+0x43: orl addr_8, #data_8
+0x46: orl a, @r0
+0x47: orl a, @r1
+0x48: orl a, r0
+0x49: orl a, r1
+0x4A: orl a, r2
+0x4B: orl a, r3
+0x4C: orl a, r4
+0x4D: orl a, r5
+0x4E: orl a, r6
+0x4F: orl a, r7
+0x72: orl c, bit_addr
+0xA0: orl c, /bit_addr
+0xD0: pop addr_8
+0xC0: push addr_8
+0xA5: reserved opcode
+0x22: ret
+0x32: reti
+0x23: rl a
+0x33: rlc a
+0x03: rr a
+0x13: rrc a
+0xD2: setb bit_addr
+0xD3: setb c
+0x80: sjmp rel_addr
+0x95: subb a, addr_8
+0x94: subb a, #data_8
+0x96: subb a, @r0
+0x97: subb a, @r1
+0x98: subb a, r0
+0x99: subb a, r1
+0x9A: subb a, r2
+0x9B: subb a, r3
+0x9C: subb a, r4
+0x9D: subb a, r5
+0x9E: subb a, r6
+0x9F: subb a, r7
+0xC4: swap a
+0xC5: xch a, addr_8
+0xC6: xch a, @r0
+0xC7: xch a, @r1
+0xC8: xch a, r0
+0xC9: xch a, r1
+0xCA: xch a, r2
+0xCB: xch a, r3
+0xCC: xch a, r4
+0xCD: xch a, r5
+0xCE: xch a, r6
+0xCF: xch a, r7
+0xD6: xchd a, @r0
+0xD7: xchd a, @r1
+0x65: xrl a, addr_8
+0x64: xrl a, #data_8
+0x62: xrl addr_8, a
+0x63: xrl addr_8, #data_8
+0x66: xrl a, @r0
+0x67: xrl a, @r1
+0x68: xrl a, r0
+0x69: xrl a, r1
+0x6A: xrl a, r2
+0x6B: xrl a, r3
+0x6C: xrl a, r4
+0x6D: xrl a, r5
+0x6E: xrl a, r6
+0x6F: xrl a, r7
+ * 
+ * 
+ ***************************************/
+
