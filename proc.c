@@ -1,6 +1,6 @@
 /*************************************************************************************
 
-    Copyright (c) 2003, 2004 by James L. Terman
+    Copyright (c) 2003 - 2005 by James L. Terman
     This file is part of the Assembler and Simulator
 
     This program is free software; you can redistribute it and/or modify

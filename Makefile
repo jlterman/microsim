@@ -1,6 +1,5 @@
 CFLAGS=-Wall -pedantic -c -I ./ -I ./include
 TARGS=$(addsuffix .trg, $(dir $(wildcard */Makefile)))
-TRGCMD=all
 export OBJS=main.o expr.o front.o back.o sim_run.o
 
 version.h: sim_vers asm_vers *.c
@@ -13,6 +12,7 @@ version.h: sim_vers asm_vers *.c
 	$(MAKE) -C $* $(TRGCMD)
 
 build:	version.h $(OBJS) $(TARGS)
+	$(MAKE) $(TARGS) TRGCMD=build
 
 test:	build
 	$(MAKE) $(TARGS) TRGCMD=test

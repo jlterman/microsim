@@ -1,6 +1,6 @@
 /*************************************************************************************
 
-    Copyright (c) 2003, 2004 by James L. Terman
+    Copyright (c) 2003 - 2005 by James L. Terman
     This file is part of the Simulator
 
     This program is free software; you can redistribute it and/or modify
@@ -37,21 +37,11 @@
 #include "err.h"
 #include "sim.h"
 
-/* break structure entry
- */
-typedef struct
-{
-  int tmp;    /* True if break cleared when hit */
-  int used;   /* True if entry a valid break */
-  int pc;     /* address of break */
-  int op;     /* opcode that break entry in memory[] replaced */
-  char *expr; /* if not NULL, break only if expr evaluates non-zero */
-} brk_struct;
-
 static brk_struct* brk_table = NULL;
 static int num_brk = 1;
 static int size_brk = 0;
-int run_sim = FALSE;
+
+int run_sim = FALSE;         /* true when simulator is running */
 
 const str_storage simErrMsg[LAST_SIM_ERR - LAST_EXPR_ERR] = 
   {
@@ -93,12 +83,12 @@ int *getMemExpr(char *expr)
  */
 void setNextBrk(int addr)
 {
-  brk_table[num_brk].tmp = TRUE;
+  safeAddArray(brk_struct, brk_table, num_brk, size_brk);
+  brk_table[0].tmp = TRUE;
   brk_table[0].used = TRUE;
   brk_table[0].pc = addr;
-  brk_table[0].op = memory[pc];
+  brk_table[0].op = memory[addr];
   brk_table[0].expr = NULL;
-  memory[pc] = -1;
 }
 
 /* Add a break at the memory address given
@@ -106,31 +96,14 @@ void setNextBrk(int addr)
 int addBrk(int tmpFlag, int addr, char *expr)
 {
   safeAddArray(brk_struct, brk_table, num_brk, size_brk);
+  brk_table[0].used = FALSE;
+
   brk_table[num_brk].tmp = tmpFlag;
   brk_table[num_brk].used = TRUE;
   brk_table[num_brk].pc = addr;
   brk_table[num_brk].op = memory[addr];
   brk_table[num_brk].expr = expr;
-  memory[addr] = -num_brk-1;
   return num_brk++;
-}
-
-/* print this break. Return true if printable, otherwise false
- */
-static int printOneBreak(FILE* fd, int i)
-{
-  if (brk_table[i].used)
-    {
-      if (brk_table[i].tmp)
-	fprintf(fd, "[%2d] Temp break at $%04X", i, brk_table[i].pc);
-      else
-	fprintf(fd, "[%2d] Perm break at $%04X", i, brk_table[i].pc);
-      if (brk_table[i].expr) fprintf(fd, " if %s", brk_table[i].expr);
-      fprintf(fd, "\n");
-      return TRUE;
-    }
-  else
-    return FALSE;
 }
 
 /* print break number. Print all if UNDEF, return TRUE if break exists
@@ -140,13 +113,13 @@ int printBreak(FILE* fd, int addr)
   int i, brk;
   if (addr == UNDEF)
     {
-      for (i = 0; i<num_brk; ++i) printOneBreak(fd, i);
+      for (i = 1; i<num_brk; ++i) printOneBreak(fd, i, brk_table + i);
       return TRUE;
     }
 
   brk = -memory[pc] - 1;
   if (brk_table[brk].used)
-    return printOneBreak(fd, brk);
+    return printOneBreak(fd, brk, brk_table + brk);
   else
     return FALSE;
 }
@@ -155,11 +128,12 @@ int printBreak(FILE* fd, int addr)
  */
 void delBrk(int brk)
 {
+  int i;
   if (brk == UNDEF)
     {
-      num_brk = 1; return;
+      for (i = 1; i<num_brk; ++i) delBrk(i);
+      return;
     }
-  memory[brk_table[brk].pc] = brk_table[brk].op;
   brk_table[brk].used = FALSE;
   free(brk_table[brk].expr); /* free expr string, if any */
 }
@@ -171,28 +145,49 @@ void stepOne(void)
   int oldPC = pc, brk = -memory[pc] - 1;
   if (brk>=0) memory[pc] = brk_table[brk].op;
   step();
-  if (pc>MEMORY_MAX) longjmp(err, bad_pc);
+  if (pc>=MEMORY_MAX) longjmp(err, bad_pc);
   if (brk>=0) memory[oldPC] = -brk - 1;
 }
 
 /* run will start executing at pc or the address given it until it 
- * run will return the current pc
+ * encounters break. run will return the current pc at break
  */
-int run(int addr)
+int run(int addr, int trace)
 {
   char *expr;
-  int brk;
+  int brk, brkFnd;
   if (addr == UNDEF) longjmp(err, bad_addr);
+  if (pc >= MEMORY_MAX || pc<0) longjmp(err, bad_pc);
+
+  for (brk = 0; brk < num_brk; ++brk)
+    {
+      if (brk_table[brk].used)
+	{
+	  memory[brk_table[brk].pc] = -brk - 1;
+	}
+    }
+
   if (memory[pc]<0) stepOne();
+  if (trace) traceDisplay();
   while (TRUE)
     {
-      brk = -memory[pc] - 1;
-      expr = brk_table[brk].expr;
-      if ((brk>0) && (!expr || getExpr(expr))) break;
+      brkFnd = -memory[pc] - 1;
+      if ((brkFnd>0) && (!(expr = brk_table[brkFnd].expr) || getExpr(expr))) break;
       stepOne();
+      if (trace) traceDisplay();
     }
-  if (brk_table[brk].tmp) delBrk(brk);
-  return brk_table[brk].pc;
+
+  for (brk = 0; brk < num_brk; ++brk)
+    {
+      if (brk_table[brk].used)
+	{
+	  memory[brk_table[brk].pc] = brk_table[brk].op;
+	}
+    }
+
+  brk_table[0].used = FALSE;
+  if (brk_table[brkFnd].tmp) delBrk(brkFnd);
+  return brk_table[brkFnd].pc;
 }
 
 /* next sets up a temporary break after and jumps over subroutine calls
@@ -201,6 +196,6 @@ int run(int addr)
 int next()
 {
   if (isJSR(memory[pc])) addBrk(TRUE, pc, NULL);
-  return run(UNDEF);
+  return run(UNDEF, FALSE);
 }
 

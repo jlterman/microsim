@@ -1,6 +1,6 @@
 /*************************************************************************************
 
-    Copyright (c) 2003, 2004 by James L. Terman
+    Copyright (c) 2003 - 2005 by James L. Terman
     This file is part of the Assembler/Simulator
 
     This program is free software; you can redistribute it and/or modify
@@ -42,11 +42,11 @@
 
 const char asm_version[] = "Assembler " ASM_VERS 
                          "\nBuild date: " BUILD_DATE 
-                         "\nCopyright (c) James L. Terman 2003, 2004\n";
+                         "\nCopyright (c) James L. Terman 2003 - 2005\n";
 
 const char sim_version[] = "Assembler " ASM_VERS ", Simulator " SIM_VERS
                          "\nBuild date: " BUILD_DATE 
-                         "\nCopyright (c) James L. Terman 2003, 2004\n";
+                         "\nCopyright (c) James L. Terman 2003 - 2005\n";
 
 /* list of simulator command line errors
  */
@@ -54,7 +54,7 @@ enum cmd_err
   { 
     miss_param = LAST_SIM_ERR, extra_param, out_range, bad_base, 
     bad_op, no_brk, no_reg, no_dsp, dup_brk, no_irq, sim_addr, bad_param,
-    run_intr, LAST_CMD_ERR
+    run_intr, no_cmd, LAST_CMD_ERR
   };
 
 const str_storage cmdErrMsg[LAST_CMD_ERR - LAST_SIM_ERR] =
@@ -71,7 +71,8 @@ const str_storage cmdErrMsg[LAST_CMD_ERR - LAST_SIM_ERR] =
     "illegal interrupt number",
     "illegal address, must be at start of instruction",
     "bad parameter",
-    "cntrl-c interrupted simulation"
+    "cntrl-c interrupted simulation",
+    "unknown command"
   };
 
 /* Line structure entry containing line and address of line
@@ -96,11 +97,12 @@ static FILE* obj = NULL;            /* pointer to object file descriptor    */
 static line_struct *lines = NULL;   /* hold file to be assembled            */
 static tmpFILE  *tmpfiles = NULL;   /* array of all temp file descriptors   */
 static int num_files = 0;
+static int emacs = FALSE;           /* emacs mode */
 
 /* Global variables just for simulator 
  */
-static char *cmd_store = NULL;      /* storage for simulator command line  */
 static int asm_Lines[MEMORY_MAX];   /* list of line numbers vs. memory loc */
+static char *cmd_store = NULL;      /* storage for simulator command line  */
 static char **dsp_list = NULL;      /* array of cmds to be displayed       */
 static int num_dsp = 0;             /* number of commands                  */
 static int done = FALSE;            /* when true, exit simulator           */
@@ -126,11 +128,19 @@ enum simCmd
 
 /* array of simulator commands strings
  */
-static const str_storage simCmdStr[lastCmd] =
+#define NUM_SIM 26
+static const str_storage simCmdStr[] =
   {
-    "b", "bt",    "cb", "cd",  "g",  "i",   "lb", "ld",
-    "m",  "n",     "p", "pb", "pd", "pl", "pled", "pr",
-    "px", "q", "reset",  "r",  "s",  "t"
+    "b", "break",    "bt", "cb", "cd",    "g",  "i",    "lb", "ld",
+    "m",     "n",  "next",  "p", "pb",   "pd", "pl",  "pled", "pr",
+    "px",    "q", "reset",  "r",  "s", "step",  "t", "trace"
+  };
+
+static const int simCmd[] =
+  {
+    brkln, brkln, brk_tmp, clr_brk, clr_dsp, go, intr, list_brk, list_dsp,
+    mem, next, next, print, pr_bin, pr_dec, pr_line, pr_led, pr_reg,
+    pr_hex, quit, resetSim, resume, stpln, stpln, trace, trace
   };
 
 /* simulator help by letter
@@ -145,7 +155,7 @@ static const str_storage sim_help[26] =
     "command will display corresponding print command after each\n"
     "execution of an instruction\n",
     0, 0, /* e, f help */
-    "g [addr] : go to addr and execute (current pc if not given)\n"
+    "g [addr] : go to addr and execute (current pc if not given)\n",
     "Simulator help by letter. Type (letter)h for more details\n\n"
     "Types of parameters:"
     "addr     - line number or with $ memory address\n"
@@ -154,11 +164,11 @@ static const str_storage sim_help[26] =
     "list     - list of numbers or expressions seperated by a space\n"
     "[...]    - optional parameter\n"
     "[repeat] - optional value to run cmd repeat times\n\n",
-    "i expr : request interrupt number expr",
-    0, 0, 0, /* j, k help */
+    "i expr : request interrupt number expr\n",
+    0, 0, /* j, k help */
     "lb [expr] : list break number (expr), at addr or all if no param\n"
-    "ld [expr] : list display number (expr) or all if no param given\n"
-    "m addr list : assign value(s) to memory location addr\n"
+    "ld [expr] : list display number (expr) or all if no param given\n",
+    "m addr list : assign value(s) to memory location addr\n",
     "n [repeat]  : execute next instr, but skip over subroutine calls\n",
     0, /* o help */
     "p[d] list          : print value of expression in decimal\n"
@@ -168,10 +178,10 @@ static const str_storage sim_help[26] =
     "pled list          : print value of expression as LED\n"
     "pr   list          : print list of registers (all if no params)\n"
     "px   list          : print expression in hexadecimal\n",
-    "q  : quit simmulator\n"
+    "q  : quit simmulator\n",
     "r [repeat] : resume execution\n"
     "reset      : reset state of simulator\n",
-    "s [repeat] : step one instruction\n"
+    "s [repeat] : step one instruction\n",
     "t [repeat] : trace until break\n",
     0, 0, 0, /* u, v, w help */
     0, 0, 0  /* x, y, z help */
@@ -252,11 +262,11 @@ static void printErrNo(int errNo)
 {
   assert(errNo >= 0 && errNo< LAST_CMD_ERR);
   if (errNo < LAST_EXPR_ERR)
-    printf("Syntax Error #%d: %s", errNo, exprErrMsg[errNo]);
+    printf("Syntax Error #%d: %s\n", errNo, exprErrMsg[errNo]);
   else if (errNo < LAST_SIM_ERR)
-    printf("Syntax Error #%d: %s", errNo, simErrMsg[errNo - LAST_EXPR_ERR]);
+    printf("Syntax Error #%d: %s\n", errNo, simErrMsg[errNo - LAST_EXPR_ERR]);
   else
-    printf("Syntax Error #%d: %s", errNo, cmdErrMsg[errNo - LAST_SIM_ERR]);
+    printf("Syntax Error #%d: %s\n", errNo, cmdErrMsg[errNo - LAST_SIM_ERR]);
 }
 
 /* getNumParam() calls ongoing strtok call to get next number parameter
@@ -282,13 +292,20 @@ static int getNumParam(int finalFlag)
 static int getAddrParam(int finalFlag)
 {
   int addr;
-  char *p = strtok(NULL, "\040\t");
+  char *s, *p = strtok(NULL, "\040\t");
   if (!p) return pc;
 
   if (!strcmp(p, "-"))
     addr = UNDEF;
   else
     {
+      if ((s = strchr(p, ':'))) 
+	{
+	  *s = '\0'; 
+	  if (strcmp(p, filename + strlen(filename) - strlen(p)))
+	    longjmp(err, bad_param);
+	  p = s + 1;
+	}
       addr = (p[0]=='$') ? getExpr(p + 1) : lines[getExpr(p) - 1].pc;
       if (asm_Lines[addr] == UNDEF) longjmp(err, sim_addr);
     }
@@ -330,6 +347,26 @@ static int answer(str_storage msg)
   return (!strcmp(buffer, "yes\n"));
 }
 
+/* print this break. Return true if printable, otherwise false
+ */
+int printOneBreak(FILE* fd, int n, brk_struct* b)
+{
+  if (b->used)
+    {
+      if (b->tmp)
+	fprintf(fd, "[%2d] Temp ", n);
+      else
+	fprintf(fd, "[%2d] Permanent ", n);
+
+      fprintf(fd, "break at address $%04X, line %d", b->pc, asm_Lines[b->pc]);
+      if (b->expr) fprintf(fd, " if %s", b->expr);
+      fprintf(fd, "\n");
+      return TRUE;
+    }
+  else
+    return FALSE;
+}
+
 /* add break. If bare number, treat as assembly file number.
  * if '$' treat as code address
  */
@@ -362,7 +399,8 @@ static void doClrBrk()
   do
     { 
       if (nchar) { printf(newLine); nchar = 0; }
-      if (!printBreak(stdout, addr)) printf("No such break");
+      if (!printBreak(stdout, addr)) 
+	printf("Warning: No such break at address %X\n", addr);
       delBrk(-memory[addr] - 1);
     }
   while ((addr = getNumParam(FALSE)));
@@ -381,11 +419,11 @@ static void doClrDsp()
   
   do
     {
-      if (index>=num_dsp) longjmp(err, out_range);
+      if (index<1 || index>num_dsp) longjmp(err, out_range);
       --index;
       if (!dsp_list[index]) 
 	{ 
-	  printf("No display command #%d\n", index); continue;
+	  printf("Warning: No display command #%d\n", index); continue;
 	}
       if (nchar) { printf(newLine); nchar = 0; }
       if (dsp_list[index]) nchar = printf(NEWLNFMT "%s", index + 1, dsp_list[index]);
@@ -459,7 +497,7 @@ static void doDsp()
  */
 static void doGo()
 {
-  int addr = run(getAddrParam(TRUE));
+  int addr = run(getAddrParam(TRUE), FALSE);
   if (addr != UNDEF) dsp_brk(asm_Lines[addr]);
   display();
 }
@@ -546,7 +584,7 @@ static void doNext()
 	  line = asm_Lines[pc] + 1;
 	  brkAddr = lines[line - 1].pc;
 	  if (memory[lines[line].pc]>0) setNextBrk(brkAddr);
-	  addr = run(pc); 
+	  addr = run(pc, FALSE); 
 	}
       else
 	stepOne();
@@ -680,7 +718,7 @@ static void doResume()
 
   while (repeat--) 
     {
-      addr = run(pc);
+      addr = run(pc, FALSE);
       if (addr != UNDEF) dsp_brk(asm_Lines[addr]);
       display();
     }
@@ -697,6 +735,13 @@ static void doStep()
   display();
 }
 
+/*   call back routine for run in sim_run.c to trace exection
+ */
+void traceDisplay() {
+  if (nchar) putchar('\n'); printf("---\n"); nchar = 0;
+  display();
+}
+
 /* trace execution. Step each instruction and execute display commands
  * until break found
  */
@@ -705,14 +750,8 @@ static void doTrace()
   int repeat = getNumParam(TRUE);
   if (repeat == UNDEF) repeat = 1;
   
-  do
-    {
-      stepOne();
-      if (nchar) putchar('\n'); printf("---\n"); nchar = 0;
-      display();
-    }
-  while (memory[pc]>0 || --repeat);
-  dsp_brk(asm_Lines[pc]);
+  while (repeat--) run(pc, TRUE);
+  if (pc != UNDEF) dsp_brk(asm_Lines[pc]);
 }
 
 /* print registers. '-' parameter means print all tokens that are registers
@@ -753,14 +792,13 @@ static void doPrintReg()
 static void doCmd(str_storage b)
 {
   char *t, *buffer = NULL;
-  str_storage *ret;
+  str_storage *ret = NULL;
   int index;
 
   safeDupStr(buffer, b);
   t = strtok(buffer, "\040\t");
-  ret = bsearch(t, simCmdStr, lastCmd, sizeof(str_storage), &cmpstr);
-  
-  index = ret - simCmdStr;
+  ret = bsearch(t, simCmdStr, NUM_SIM, sizeof(str_storage), &cmpstr);
+  index = (ret) ? simCmd[ret - simCmdStr] : -1;
   switch (index)
     {
     case brkln:    doBrk(FALSE);       break;
@@ -798,7 +836,7 @@ static void doCmd(str_storage b)
 	  else if (sim_help[t[1]-'a'])
 	    printf(sim_help[t[1]-'a']);
 	  else
-	    printf("Error: No command %c", t[1]);
+	    longjmp(err, no_cmd);
 	  break;
 	case 'p': 
 	  if (t[1] == 'm') 
@@ -807,7 +845,7 @@ static void doCmd(str_storage b)
 	      break;
 	    }
 	default : 
-	  printf("Error: Unknown command %s", t);
+	  longjmp(err, no_cmd);
 	  break;
 	}
       break;
@@ -974,8 +1012,10 @@ int main_sim(int argc, char *argv[])
   int c, errNo, i, l, numErr = 0;
   unsigned int m;
   char *line, *temp = getTmpFile("sim");
-  if (!argc) printSimHelp();
-  while ((c = getopt(argc, argv, "Vh")) != EOF)
+  if (argc<2) printSimHelp();
+  if (!strcmp(argv[1], "-fullname")) argv[1] = "-f";
+
+  while ((c = getopt(argc, argv, "fVh")) != EOF)
     {
       switch (c)
 	{
@@ -983,8 +1023,13 @@ int main_sim(int argc, char *argv[])
 	  printf(sim_version); printf(cpu_version);
 	  exit(0);
 	  break;
+	case 'f':
+	  emacs = TRUE;
+	  break;
 	case 'h':
 	default:
+	  for (c = 0; c<argc; ++c) printf("%s ", argv[c]);
+	  printf("\n");
 	  printSimHelp();
 	  break;
 	}
@@ -1017,11 +1062,13 @@ int main_sim(int argc, char *argv[])
 
   run_sim = TRUE;
   reset();
-  printf("Simulating file %s starting at line %d", filename, asm_Lines[pc]);
+  printf("Simulating file %s starting at line %d\n", filename, asm_Lines[pc]);
   while (!done)
     {
+      if (emacs) printf("\032\032%s:%d:0\n", filename, asm_Lines[pc]);
       strcpy(newLine, "\n");
-      printf("\n> "); nchar = 0; fflush(stdout);
+      if (nchar) { printf("\n"); nchar = 0; }
+      printf("> "); fflush(stdout);
       line = safeGetLine(stdin);
       if (line && strlen(line))
 	{
@@ -1080,7 +1127,7 @@ int main_asm(int argc, char *argv[])
   int verbose = FALSE;
   char temp[] = "asmXXXXXX";
 
-  if (!argc) printAsmHelp();
+  if (argc<2) printAsmHelp();
   while ((c = getopt(argc, argv, "svhlVLo:")) != EOF)
     {
       switch (c)
@@ -1182,6 +1229,8 @@ int main(int argc, char *argv[])
   signal(SIGSEGV, myhandler);
   signal(SIGTERM, myhandler);
 
+  /* Find program name. If sim run as simulator, asm as assembler
+   */
 #ifdef __WIN32__
   if (!strcmp("sim.exe", argv[0] + strlen(argv[0]) - 7)) 
     return main_sim(argc, argv);
