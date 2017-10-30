@@ -11,12 +11,12 @@ vary on a non Linux system.
 
 To build the tools, check out the source and at the root directory and type: 
 
-	make "CC=gcc -O"
+	make "CC=gcc -O" all
 
 In the cygwin environment <http://www.cygwin.com> you can build win32 native 
 tools (doesn't need the cygwin.dll) with the command:
 
-	make "CC=gcc -O -mno-cygwin"
+	make "CC=gcc -O -mno-cygwin" all
 
 The processor specific assembler and simulator will be in the processor
 directories. Run asm -h to get help for the assembler or enter h as a command 
